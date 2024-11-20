@@ -1,0 +1,8 @@
+{
+    "audience_src": "C:/Users/yeljasouli/OneDrive - Orange Business (ex-B&D)/Documents/projet-Proximus/refedata/data audience creation l.xlsx",
+    "audience_dest": "",
+    "cost_src": "C:/Users/yeljasouli/OneDrive - Orange Business (ex-B&D)/Documents/projet-Proximus/refedata/business model 2024.xlsx",
+    "cost_dest": "C:\\Users\\yeljasouli\\OneDrive - Orange Business (ex-B&D)\\Documents\\python-DatasetStream-automation\\All\\outputs",
+    "product_grouping_src": "C:\\Users\\yeljasouli\\OneDrive - Orange Business (ex-B&D)\\Documents\\projet-Proximus\\refedata\\Product_Grouping_Latest_20231117.xlsx",
+    "channel_grouping_src": "C:\\Users\\yeljasouli\\OneDrive - Orange Business (ex-B&D)\\Documents\\projet-Proximus\\refedata\\Channel_Grouping_Latest_20240607.xlsx"
+}
