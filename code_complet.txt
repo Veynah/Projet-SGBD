@@ -1,0 +1,3538 @@
+# File: /Users/adta/Desktop/Projet-SGBD/src/main.py
+import tkinter as tk
+from tkinter import ttk, filedialog
+
+from ui.tab_audience import AudienceTab
+from ui.tab_cost import CostTab
+from ui.ui_config import ConfigUI
+from utilities.utils import show_message, create_styled_button, prevent_multiple_instances, get_base_dir, center_window, \
+    set_window_icon
+from utilities.config_manager import ConfigManager, ConfigLoaderPopup, ViewDealsLoaderPopup
+import os
+
+
+class MainApplication(tk.Tk):
+    def __init__(self, base_dir):
+        super().__init__()
+        self.cost_tab = None
+        self.audience_tab = None
+        self.base_dir = base_dir
+        self.config_manager = ConfigManager()
+        self.config_data = self.config_manager.load_config()
+        print(f"Debug: 'cost_dest' after loading config: {self.config_data.get('cost_dest', '')}")
+        self.config_ui_callback = self.update_config_data
+
+        self.initialize_ui()
+        center_window(self, self.master, 1200, 875)
+        self.show_file_loader_popup_if_files_exist()
+
+    def show_file_loader_popup_if_files_exist(self):
+        files_to_load = {k: v for k, v in self.config_data.items() if os.path.isfile(v)}
+        if files_to_load:
+            print("Files found, showing loader popup.")
+            ConfigLoaderPopup(self, self.config_manager, self.load_tab_content, self.audience_tab)
+
+
+    def initialize_ui(self):
+        """Initialize the main UI components."""
+        self.title("Proximus Automation")
+        set_window_icon(self)
+        self.create_styles()
+        self.configure_geometry()
+        self.create_menus()
+        self.create_tabs()
+        self.create_bottom_frame()
+
+    def configure_geometry(self):
+        """Configure window size and properties."""
+        self.minsize(600, 450)
+
+    def create_styles(self):
+        """Configure the styles for the application."""
+        style = ttk.Style(self)
+        style.theme_use('xpnative')
+        style.configure('TButton', font=('Helvetica', 14), padding=10)
+        style.configure('TLabel', font=('Helvetica', 12), background='#f0f0f0')
+        style.configure('TNotebook.Tab', font=('Helvetica', 8), padding=[20, 8],
+                         borderwidth=1, relief='solid')
+        style.configure('Bottom.TFrame', background='SystemButtonFace')
+
+    def create_menus(self):
+        """Set up the application's menu bar."""
+        menubar = tk.Menu(self)
+        self.config(menu=menubar)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+
+        open_menu = tk.Menu(file_menu, tearoff=0)
+
+        open_menu.add_command(label="Open audience_src", command=lambda: self.replace_config_file('audience_src'))
+        open_menu.add_command(label="Open cost_src", command=lambda: self.replace_config_file('cost_src'))
+
+        file_menu.add_cascade(label="Open", menu=open_menu)
+        file_menu.add_command(label="Recent Files Loader", command=self.open_recent_files_loader)
+        file_menu.add_separator()
+        file_menu.add_command(label="Save Configuration", command=self.save_configuration)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.exit_app)
+
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu.add_command(label="Undo", command=self.edit_undo)
+        edit_menu.add_command(label="Redo", command=self.edit_redo)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Preferences", command=self.open_config)
+
+        menubar.add_cascade(label="File", menu=file_menu)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+
+    def setup_file_menu(self):
+        """Create and return the file menu."""
+        file_menu = tk.Menu(self.menubar, tearoff=0, background='SystemButtonFace', fg='black')
+        file_menu.add_command(label="Open",
+                              command=lambda: show_message("Open", "Open a file!", type="info", master=self,
+                                                           custom=True))
+        file_menu.add_command(label="Save Configuration", command=self.save_configuration)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.exit_app)
+        return file_menu
+
+    def setup_edit_menu(self):
+        """Create and return the edit menu."""
+        edit_menu = tk.Menu(self.menubar, tearoff=0, background='SystemButtonFace', fg='black')
+        edit_menu.add_command(label="Preferences", command=self.open_config)
+        return edit_menu
+
+    def create_tabs(self):
+        """Initialize tab controls and tabs."""
+        self.tab_control = ttk.Notebook(self, padding=10)
+
+        # Create tabs without loading files
+        self.audience_tab = AudienceTab(parent=self.tab_control,  base_dir=self.base_dir, config_manager=self.config_manager,
+                                        config_ui_callback=self.config_ui_callback)
+        self.cost_tab = CostTab(parent=self.tab_control,  base_dir=self.base_dir, config_manager=self.config_manager,
+                                config_ui_callback=self.config_ui_callback)
+
+        self.tab_control.add(self.audience_tab, text='Audience')
+        self.tab_control.add(self.cost_tab, text='Cost')
+
+        self.tab_control.pack(expand=1, fill='both', padx=15, pady=(5, 0))
+
+    def load_tab_content(self, key, path):
+        """Callback function to load content into specific tabs."""
+        try:
+            if key == "audience_src":
+                self.audience_tab.load_file(path)
+            elif key == "cost_src":
+                self.cost_tab.load_file(path)
+        except Exception as e:
+            show_message("Error", f"Failed to load {key}: {e}", type='error', master=self, custom=True)
+
+    def open_contract_loader_popup(self):
+        ViewDealsLoaderPopup(self, self.config_manager)
+
+    def create_bottom_frame(self):
+        """Create the bottom frame with configuration and process buttons."""
+        bottom_frame = ttk.Frame(self, padding=10, style='Bottom.TFrame')
+        bottom_frame.pack(side='bottom', fill='x')
+
+        create_styled_button(bottom_frame, 'Preferences', self.open_config).pack(side='left', padx=10, pady=(4, 0))
+
+        audience_frame = ttk.Labelframe(bottom_frame, text="Audience", padding=5)
+        audience_frame.pack(side='left', padx=10, pady=(0, 15))
+
+        process_button = create_styled_button(audience_frame, "Process", self.audience_tab.start_processing,
+                                              width=12)
+        process_button.pack(side='left', padx=5, pady=5)
+
+        view_result_button = create_styled_button(audience_frame, "View", self.audience_tab.view_result,
+                                                  width=12)
+        view_result_button.pack(side='left', padx=5, pady=5)
+
+        cost_frame = ttk.Labelframe(bottom_frame, text="Cost", padding=5)
+        cost_frame.pack(side='left', padx=10, pady=(0, 15))
+
+        new_deal_button = create_styled_button(cost_frame, "New Deal", self.cost_tab.open_new_deal_popup,
+                                               width=12)
+        new_deal_button.pack(side='left', padx=5, pady=5)
+
+        # update_deal_button = create_styled_button(cost_frame, "Update Deal", self.cost_tab.open_update_deal_popup,
+        #                                           width=12)
+        # update_deal_button.pack(side='left', padx=5, pady=5)
+
+        view_deals_button = create_styled_button(cost_frame, "View Deals", self.open_contract_loader_popup,
+                                                 width=12)
+        view_deals_button.pack(side='left', padx=5, pady=5)
+
+    def open_config(self):
+        """Open the configuration UI."""
+        tab_names = [self.tab_control.tab(tab, "text") for tab in self.tab_control.tabs()]
+        self.config_ui = ConfigUI(self, tab_names)
+
+    def file_open(self):
+        show_message("Open", "Open a file!", type="info", master=self, custom=True)
+
+    def save_configuration(self):
+        """Saves the current configuration using the ConfigManager."""
+        try:
+            self.config_manager.save_config()
+            show_message("Configuration", "Configuration saved successfully!", type="info", master=self, custom=True)
+        except Exception as e:
+            show_message("Error", "Failed to save configuration:\n" + str(e), type="error", master=self, custom=True)
+
+    def exit_app(self):
+        self.quit()
+
+    def edit_undo(self):
+        show_message("Undo", "Undo the last action!", type="info", master=self, custom=True)
+
+    def edit_redo(self):
+        show_message("Redo", "Redo the last undone action!", type="info", master=self, custom=True)
+
+    def update_config_data(self, key, value):
+        self.config_manager.update_config(key, value)
+
+    def open_recent_files_loader(self):
+        """Open the Recent Files Loader popup."""
+        ConfigLoaderPopup(self, self.config_manager, self.load_tab_content, self.audience_tab)
+
+    def replace_config_file(self, key):
+        """Replace the file for a specific configuration key."""
+        file_path = filedialog.askopenfilename(
+            title=f"Select new file for {key}",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+        )
+        if file_path:
+            self.config_manager.update_config(key, file_path)
+            self.config_manager.save_config()
+            self.load_tab_content(key, file_path)
+            show_message("Success", f"Loaded new file for {key}: {file_path}", type="info", master=self, custom=True)
+
+
+if __name__ == "__main__":
+    base_dir = get_base_dir(__file__)
+    prevent_multiple_instances()
+
+    app = MainApplication(base_dir=base_dir)
+    app.mainloop()
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/ui/tab_audience.py
+import json
+import os
+import subprocess
+import sys
+import time
+import traceback
+from datetime import datetime
+from tkinter import filedialog, Listbox, MULTIPLE, BooleanVar, Toplevel, StringVar
+from tkinter import ttk
+
+import pandas as pd
+
+from utilities import utils
+from utilities.utils import show_message
+
+
+class AudienceTab(ttk.Frame):
+    def __init__(self, parent, config_manager, base_dir, config_ui_callback=None):
+        super().__init__(parent)
+        self.lookup_key_to_prod_num = None
+        self.prod_num_label = None
+        self.bus_chanl_num_map = None
+        self.prod_num_map = None
+        self.bus_chanl_label = None
+        self.output_dir = None
+        self.tooltip = None
+        self.df = None
+        self.config_ui_callback = config_ui_callback
+        self.config_manager = config_manager
+        self.config_data = config_manager.get_config()
+        self.base_dir = base_dir
+        self.file_path = None
+        self.current_date = datetime.now()
+        self.current_year = self.current_date.year
+        self.current_month = self.current_date.month
+        self.audience_tab_setup()
+
+    def section_filter_bar_setup(self):
+        filter_container = ttk.Frame(self.specifics_frame)
+        filter_container.pack(side='top', fill='x', padx=10, pady=(5, 10))
+
+        ttk.Label(filter_container, text="Filter:").pack(side='left', padx=(0, 5))
+
+        self.filter_var = StringVar()
+        self.filter_bar = ttk.Entry(filter_container, textvariable=self.filter_var, width=40)
+        self.filter_bar.pack(side='left', fill='x', expand=True)
+
+        self.filter_bar.bind('<KeyRelease>', self.filter_listboxes)
+
+    def filter_listboxes(self, event=None):
+        search_term = self.filter_var.get().lower()
+
+        if not hasattr(self, 'global_selected_channels'):
+            self.global_selected_channels = set()
+
+        currently_selected = set(self.bus_chanl_num_listbox.get(i) for i in self.bus_chanl_num_listbox.curselection())
+        self.global_selected_channels.update(currently_selected)
+
+        self.bus_chanl_num_listbox.delete(0, 'end')
+        for display_value, bus_chanl_num in self.bus_chanl_num_map.items():
+            display_value_str = str(display_value).lower()
+            bus_chanl_num_str = str(bus_chanl_num).lower()
+
+            if search_term in display_value_str or search_term in bus_chanl_num_str:
+                self.bus_chanl_num_listbox.insert('end', display_value)
+
+        self.restore_selection_after_filter()
+
+    def restore_selection_after_filter(self):
+        current_items = set(self.bus_chanl_num_listbox.get(0, 'end'))
+
+        selected_items_to_restore = self.global_selected_channels & current_items
+
+        for i in range(self.bus_chanl_num_listbox.size()):
+            if self.bus_chanl_num_listbox.get(i) in selected_items_to_restore:
+                self.bus_chanl_num_listbox.selection_set(i)
+
+    def section_specifics_listbox_highlight_top(self, listbox):
+        selected_indices = listbox.curselection()
+        if not selected_indices:
+            return
+
+        first_visible_index = listbox.nearest(0)
+
+        selected_items = [listbox.get(i) for i in selected_indices]
+        remaining_items = [listbox.get(i) for i in range(listbox.size()) if i not in selected_indices]
+
+        listbox.delete(0, 'end')
+        for item in selected_items:
+            listbox.insert('end', item)
+            listbox.selection_set('end')
+        for item in remaining_items:
+            listbox.insert('end', item)
+
+        listbox.yview_scroll(first_visible_index - listbox.nearest(0), 'units')
+
+    def audience_tab_setup(self):
+        """Sets up user interface components."""
+        self.pack(fill='both', expand=True)
+        self.tab_style()
+        self.section_references_setup()
+        self.section_target_setup()
+        self.section_specifics_setup()
+        self.load_output_directory()
+
+
+    def section_target_output_location(self):
+        """Prompt the user to select an output directory and update the configuration."""
+        folder_selected = filedialog.askdirectory()
+        if folder_selected:
+            self.output_path.delete(0, 'end')
+            normalized_path = os.path.normpath(folder_selected)
+            self.output_path.insert(0, normalized_path)
+            self.output_dir = normalized_path
+            self.config_manager.update_config('audience_dest', normalized_path)
+
+    def load_output_directory(self):
+        """Load the output directory from the configuration."""
+        stored_output_dir = self.config_data.get('audience_dest')
+        if stored_output_dir:
+            normalized_path = os.path.normpath(stored_output_dir)
+            self.output_path.delete(0, 'end')
+            self.output_path.insert(0, normalized_path)
+            self.output_dir = normalized_path
+        else:
+            print("No output directory set in configuration.")
+
+
+    def show_tooltip(self, event, text):
+        self.tooltip = utils.tooltip_show(event, text, self)
+
+    def hide_tooltip(self):
+        utils.tooltip_hide(self.tooltip)
+
+    def section_specifics_setup(self):
+        container = ttk.Frame(self)
+        container.pack(side='top', fill='x', expand=False, padx=20, pady=10)
+
+        label_checkbox_container = ttk.Frame(container)
+        label_checkbox_container.pack(side='top', pady=(10, 5), anchor='center')
+
+        specifics_label = ttk.Label(label_checkbox_container, text="CUSTOM SELECTION", style='Title.TLabel')
+        specifics_label.pack(side='left', padx=(0, 5))
+
+        self.specifics_var = BooleanVar()
+        self.specifics_checkbox = ttk.Checkbutton(label_checkbox_container, text="enable",
+                                                  variable=self.specifics_var,
+                                                  command=self.section_specifics_checkbox_enable)
+        self.specifics_checkbox.pack(side='left')
+
+
+        button_container = ttk.Frame(container)
+        button_container.pack(side='top', expand=False, pady=(5, 5), anchor='center')
+
+        self.channel_grouping_button = ttk.Button(button_container, text="Channels", command=self.grouping_channel_load,
+                                                  width=10, style='AudienceTab.TButton')
+        self.channel_grouping_button.pack(side='left', padx=(1, 5), pady=(0, 0))
+        self.tooltip = None
+        self.channel_grouping_button.bind("<Enter>", lambda e: self.show_tooltip(e,
+                                                                                 "Channel Grouping\nsheet: Content_Channel_Grouping\ncolumn: CHANNEL_NAME"))
+        self.channel_grouping_button.bind("<Leave>", lambda e: self.hide_tooltip())
+
+        # Products button
+        self.product_grouping_button = ttk.Button(button_container, text="Products", command=self.load_product_grouping,
+                                                  width=10, style='AudienceTab.TButton')
+        self.product_grouping_button.pack(side='left', padx=(5, 1), pady=(0, 0))
+
+        # Center the button container within its parent
+        button_container.pack(anchor='center')
+        self.product_grouping_button.bind("<Enter>", lambda e: self.show_tooltip(e,
+                                                                                 "Products Grouping\nsheet: Content_Product_Grouping WS 241\ncolumn: PROD_NUM"))
+        self.product_grouping_button.bind("<Leave>", lambda e: self.hide_tooltip())
+
+
+        filter_container = ttk.Frame(container)
+        filter_container.pack(side='top', fill='x', padx=10, pady=(5, 5))
+
+        filter_label = ttk.Label(filter_container, text="Filter:")
+        filter_label.pack(side='left', padx=(0, 5))
+
+        self.filter_var = StringVar()
+        self.filter_bar = ttk.Entry(filter_container, textvariable=self.filter_var, width=40)
+        self.filter_bar.pack(side='left', fill='x', expand=True)
+        self.filter_bar.bind('<KeyRelease>', self.filter_listboxes)
+
+        self.specifics_frame = ttk.Frame(container)
+        self.specifics_frame.pack(side='top', fill='both', expand=True, padx=10, pady=(5, 15))
+
+        bus_chanl_frame = ttk.Frame(self.specifics_frame)
+        bus_chanl_frame.pack(side='left', fill='both', expand=True, padx=0, pady=0)
+        self.bus_chanl_label = ttk.Label(bus_chanl_frame, text="BUS_CHANL_NUM")
+        self.bus_chanl_label.pack(side='top', padx=5)
+
+        self.bus_chanl_num_listbox = Listbox(bus_chanl_frame, selectmode=MULTIPLE, exportselection=False)
+        self.bus_chanl_num_listbox.pack(side='left', fill='both', expand=True)
+        bus_chanl_scrollbar = ttk.Scrollbar(bus_chanl_frame, orient="vertical")
+        bus_chanl_scrollbar.config(command=self.bus_chanl_num_listbox.yview)
+        self.bus_chanl_num_listbox.config(yscrollcommand=bus_chanl_scrollbar.set)
+        bus_chanl_scrollbar.pack(side="right", fill="y")
+
+        # Product listbox setup
+        prod_num_frame = ttk.Frame(self.specifics_frame)
+        prod_num_frame.pack(side='left', fill='both', expand=True, padx=0, pady=0)
+        ttk.Label(prod_num_frame, text="PROD_NUM:").pack(side='top', padx=0)
+
+        self.prod_num_listbox = Listbox(prod_num_frame, selectmode=MULTIPLE, exportselection=False)
+        self.prod_num_listbox.pack(side='left', fill='both', expand=True)
+        prod_num_scrollbar = ttk.Scrollbar(prod_num_frame, orient="vertical")
+        prod_num_scrollbar.config(command=self.prod_num_listbox.yview)
+        self.prod_num_listbox.config(yscrollcommand=prod_num_scrollbar.set)
+        prod_num_scrollbar.pack(side="right", fill="y")
+
+        # Reset row frame
+        self.reset_row_frame = ttk.Frame(container)
+
+        style = ttk.Style()
+        style.configure("Small.TLabel", font=("Arial", 12))
+
+        self.row_count_label = ttk.Label(self.reset_row_frame, text="Selected Rows: 0", style="Small.TLabel")
+        self.row_count_label.pack(side='left', padx=5, pady=0)
+
+        self.prod_count_label = ttk.Label(self.reset_row_frame, text="Selected Products: 0", style="Small.TLabel")
+        self.prod_count_label.pack(side='right', padx=5, pady=0)
+        self.reset_label = ttk.Label(self.reset_row_frame, text="⟳", style="Small.TLabel", cursor="hand2")
+        self.reset_label.pack(padx=5, pady=0)
+        self.reset_label.bind("<Button-1>", self.section_specifics_listbox_reset)
+
+        self.reset_row_frame.pack(side='top', fill='x', expand=False, padx=5, pady=(0, 0))
+        self.reset_row_frame.pack_forget()
+
+        self.prod_num_listbox.bind('<<ListboxSelect>>', self.section_specifics_counters_update)
+        self.bus_chanl_num_listbox.bind('<<ListboxSelect>>', self.section_specifics_counters_update)
+
+        # Enable specifics functionality
+        self.section_specifics_checkbox_enable()
+
+    def section_specifics_listboxes_values(self):
+        """Loads unique values from the reference file into listboxes for selection."""
+        if self.specifics_var.get() and self.df is not None:
+            # Only clear listbox if not initialized
+            if not hasattr(self, 'prod_num_map') or self.prod_num_map is None:
+                self.prod_num_listbox.delete(0, 'end')
+                unique_prod_num = sorted(set(str(item) for item in self.df['PROD_NUM'].unique()))
+                for value in unique_prod_num:
+                    self.prod_num_listbox.insert('end', value)
+                self.prod_num_map = {str(value): str(value) for value in unique_prod_num}
+
+            if not hasattr(self, 'bus_chanl_num_map') or self.bus_chanl_num_map is None:
+                self.bus_chanl_num_listbox.delete(0, 'end')
+                unique_bus_chanl_num = sorted(set(str(item) for item in self.df['BUS_CHANL_NUM'].unique()))
+                for value in unique_bus_chanl_num:
+                    self.bus_chanl_num_listbox.insert('end', value)
+                self.bus_chanl_num_map = {str(value): str(value) for value in unique_bus_chanl_num}
+
+        self.section_specifics_counters_update()
+        self.specifics_frame.update_idletasks()
+
+    def grouping_channel_load(self):
+        """Loads the channel grouping file and updates the BUS_CHANL_NUM listbox in alphabetical order."""
+        self.specifics_var.set(True)
+        self.section_specifics_checkbox_enable()
+
+        try:
+            file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx;*.xls")])
+            if not file_path:
+                return
+
+            channel_grouping_df = pd.read_excel(file_path, sheet_name='Content_Channel_Grouping')
+
+            bus_chanl_nums = self.bus_chanl_num_listbox.get(0, 'end')
+            updated_bus_chanl_nums = []
+
+            for bus_chanl_num in bus_chanl_nums:
+                try:
+                    bus_chanl_num_float = float(bus_chanl_num)
+                    match = channel_grouping_df[channel_grouping_df['BUS_CHANNEL_ID'] == bus_chanl_num_float]
+                    if not match.empty:
+                        updated_bus_chanl_nums.append((bus_chanl_num, match['CHANNEL_NAME'].values[0]))
+                    else:
+                        updated_bus_chanl_nums.append((bus_chanl_num, bus_chanl_num))
+                except ValueError:
+                    updated_bus_chanl_nums.append((bus_chanl_num, bus_chanl_num))
+
+            # Sort the list alphabetically by display_value
+            updated_bus_chanl_nums.sort(key=lambda x: str(x[1]).lower() if isinstance(x[1], str) else str(x[1]))
+
+            # Update the BUS_CHANL_NUM listbox and map without affecting the product listbox or map
+            self.bus_chanl_num_listbox.delete(0, 'end')
+            if not hasattr(self, 'bus_chanl_num_map') or self.bus_chanl_num_map is None:
+                self.bus_chanl_num_map = {}
+
+            # Retain the existing mappings and just update with new data
+            new_bus_chanl_map = {}
+            for bus_chanl_num, display_value in updated_bus_chanl_nums:
+                self.bus_chanl_num_listbox.insert('end', display_value)
+                new_bus_chanl_map[display_value] = bus_chanl_num
+
+            self.bus_chanl_num_map.update(new_bus_chanl_map)
+            self.bus_chanl_label.config(text="CHANNEL_NAME")
+
+        except PermissionError:
+            show_message("Error", "Permission denied: unable to open the file.", type="error", master=self)
+        except ValueError:
+            show_message("Error", "Error in reading the Excel file. Ensure the sheet name and columns are correct.",
+                         type="error", master=self)
+        except Exception as e:
+            show_message("Error", f"An unexpected error occurred: {e}", type="error", master=self)
+
+    def load_product_grouping(self):
+        """Loads the product grouping file and updates the PROD_NUM listbox in alphabetical order."""
+        self.specifics_var.set(True)
+        self.section_specifics_checkbox_enable()
+
+        try:
+            file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx;*.xls")])
+            if not file_path:
+                return
+
+            product_grouping_df = pd.read_excel(file_path, sheet_name='Content_Product_Grouping WS 241')
+
+            prod_nums = self.prod_num_listbox.get(0, 'end')
+            updated_prod_nums = []
+
+            for prod_num in prod_nums:
+                try:
+                    match = product_grouping_df[product_grouping_df['PROD_NUM'].astype(str) == str(prod_num)]
+                    if not match.empty:
+                        updated_prod_nums.append((prod_num, match['LOOKUP_KEY'].values[0]))
+                    else:
+                        updated_prod_nums.append((prod_num, prod_num))
+                except ValueError:
+                    updated_prod_nums.append((prod_num, prod_num))
+
+            # Sort the list alphabetically by display_value (product name)
+            updated_prod_nums.sort(key=lambda x: str(x[1]).lower() if isinstance(x[1], str) else str(x[1]))
+
+            # Update only the PROD_NUM listbox without resetting the bus_chanl_num_map
+            self.prod_num_listbox.delete(0, 'end')
+
+            # Ensure the product maps are dictionaries before clearing them
+            if not hasattr(self, 'prod_num_map') or self.prod_num_map is None:
+                self.prod_num_map = {}
+            if not hasattr(self, 'lookup_key_to_prod_num') or self.lookup_key_to_prod_num is None:
+                self.lookup_key_to_prod_num = {}
+
+            self.prod_num_map.clear()
+            self.lookup_key_to_prod_num.clear()
+
+            for prod_num, display_value in updated_prod_nums:
+                self.prod_num_listbox.insert('end', display_value)
+                self.prod_num_map[display_value] = prod_num
+                self.lookup_key_to_prod_num[display_value] = prod_num
+
+        except PermissionError:
+            show_message("Error", "Permission denied: unable to open the file.", type="error", master=self)
+        except ValueError:
+            show_message("Error", "Error in reading the Excel file. Ensure the sheet name and columns are correct.",
+                         type="error", master=self)
+        except Exception as e:
+            show_message("Error", f"An unexpected error occurred: {e}", type="error", master=self)
+
+    def section_specifics_counters_update(self, event=None):
+        """Updates the label to show the number of rows and products selected based on listbox selections."""
+        if self.df is None:
+            self.row_count_label.config(text="Selected Rows: 0")
+            self.prod_count_label.config(text="Selected Products: 0")
+            return
+
+        selected_prod_nums = [self.prod_num_listbox.get(i) for i in self.prod_num_listbox.curselection()]
+        selected_bus_chanl_display_values = [self.bus_chanl_num_listbox.get(i) for i in
+                                             self.bus_chanl_num_listbox.curselection()]
+
+        # Mapping to bus_chanl_num values
+        selected_bus_chanl_nums = [self.bus_chanl_num_map.get(display_value, display_value) for display_value in
+                                   selected_bus_chanl_display_values]
+
+        # select matching
+        if selected_bus_chanl_nums:
+            related_prod_nums = set(
+                self.df[self.df['BUS_CHANL_NUM'].astype(str).isin(selected_bus_chanl_nums)]['PROD_NUM'].dropna().astype(
+                    str))
+
+            # Mapping to LOOKUP_KEY values
+            if hasattr(self, 'lookup_key_to_prod_num') and self.lookup_key_to_prod_num:
+                related_lookup_keys = {key for key, value in self.lookup_key_to_prod_num.items() if
+                                       value in related_prod_nums}
+            else:
+                related_lookup_keys = related_prod_nums
+
+            self.prod_num_listbox.selection_clear(0, 'end')
+            for i in range(self.prod_num_listbox.size()):
+                if self.prod_num_listbox.get(i) in related_lookup_keys:
+                    self.prod_num_listbox.selection_set(i)
+
+        selected_prod_nums = [self.prod_num_listbox.get(i) for i in self.prod_num_listbox.curselection()]
+
+        if not selected_prod_nums:
+            selected_prod_nums = self.prod_num_listbox.get(0, 'end')
+        if not selected_bus_chanl_nums:
+            selected_bus_chanl_nums = list(self.bus_chanl_num_map.values()) if hasattr(self,
+                                                                                       'bus_chanl_num_map') else []
+
+        # Mapping LOOKUP_KEYto the original PROD_NUM
+        selected_prod_nums_mapped = [self.prod_num_map.get(lookup_key, lookup_key) for lookup_key in selected_prod_nums]
+
+        filtered_df = self.df[
+            (self.df['PROD_NUM'].astype(str).isin(selected_prod_nums_mapped)) &
+            (self.df['BUS_CHANL_NUM'].astype(str).isin(selected_bus_chanl_nums))
+            ]
+
+        self.row_count_label.config(text=f"Selected Rows: {len(filtered_df)}")
+        self.prod_count_label.config(text=f"Selected Products: {len(set(selected_prod_nums))}")
+
+        self.section_specifics_listbox_highlight_top(self.bus_chanl_num_listbox)
+        self.section_specifics_listbox_highlight_top(self.prod_num_listbox)
+
+    def section_specifics_listbox_reset(self, event=None):
+        """Resets the selections in both listboxes, clears the filter, and resets the highlights."""
+        self.filter_var.set("")
+
+        if hasattr(self, 'global_selected_channels'):
+            self.global_selected_channels.clear()
+
+        self.prod_num_listbox.selection_clear(0, 'end')
+        self.bus_chanl_num_listbox.selection_clear(0, 'end')
+
+        self.section_specifics_listboxes_values()
+
+        self.section_specifics_counters_update()
+
+    def enable_specifics(self):
+        """Enables the specifics checkbox and loads the necessary DataFrame values."""
+        self.specifics_var.set(True)
+        self.section_specifics_checkbox_enable()
+
+        # Automatically load the product and channel grouping if the files are preloaded
+        if self.config_manager.get_config().get('product_grouping_src'):
+            self.load_product_grouping_from_config(self.config_manager.get_config().get('product_grouping_src'))
+
+        if self.config_manager.get_config().get('channel_grouping_src'):
+            self.grouping_channel_load_from_config(self.config_manager.get_config().get('channel_grouping_src'))
+
+    def load_product_grouping_from_config(self, file_path):
+        """Loads the product grouping file from the preloaded config and updates the PROD_NUM listbox."""
+        self.specifics_var.set(True)
+        self.section_specifics_checkbox_enable()
+
+        try:
+            product_grouping_df = pd.read_excel(file_path, sheet_name='Content_Product_Grouping WS 241')
+
+            prod_nums = self.prod_num_listbox.get(0, 'end')
+            updated_prod_nums = []
+
+            for prod_num in prod_nums:
+                try:
+                    match = product_grouping_df[product_grouping_df['PROD_NUM'].astype(str) == str(prod_num)]
+                    if not match.empty:
+                        updated_prod_nums.append((prod_num, match['LOOKUP_KEY'].values[0]))
+                    else:
+                        updated_prod_nums.append((prod_num, prod_num))
+                except ValueError:
+                    updated_prod_nums.append((prod_num, prod_num))
+
+            updated_prod_nums.sort(key=lambda x: str(x[1]).lower() if isinstance(x[1], str) else str(x[1]))
+
+            self.prod_num_listbox.delete(0, 'end')
+            self.prod_num_map = {}
+            self.lookup_key_to_prod_num = {}
+
+            for prod_num, display_value in updated_prod_nums:
+                self.prod_num_listbox.insert('end', display_value)
+                self.prod_num_map[display_value] = prod_num
+                self.lookup_key_to_prod_num[display_value] = prod_num
+
+        except Exception as e:
+            show_message("Error", f"An error occurred while loading the product grouping: {e}", type="error",
+                         master=self)
+
+    def grouping_channel_load_from_config(self, file_path):
+        """Loads the channel grouping file from the preloaded config and updates the BUS_CHANL_NUM listbox."""
+        self.specifics_var.set(True)
+        self.section_specifics_checkbox_enable()
+
+        try:
+            channel_grouping_df = pd.read_excel(file_path, sheet_name='Content_Channel_Grouping')
+
+            bus_chanl_nums = self.bus_chanl_num_listbox.get(0, 'end')
+            updated_bus_chanl_nums = []
+
+            for bus_chanl_num in bus_chanl_nums:
+                try:
+                    bus_chanl_num_float = float(bus_chanl_num)
+                    match = channel_grouping_df[channel_grouping_df['BUS_CHANNEL_ID'] == bus_chanl_num_float]
+                    if not match.empty:
+                        updated_bus_chanl_nums.append((bus_chanl_num, match['CHANNEL_NAME'].values[0]))
+                    else:
+                        updated_bus_chanl_nums.append((bus_chanl_num, bus_chanl_num))
+                except ValueError:
+                    updated_bus_chanl_nums.append((bus_chanl_num, bus_chanl_num))
+
+            updated_bus_chanl_nums.sort(key=lambda x: str(x[1]).lower() if isinstance(x[1], str) else str(x[1]))
+
+            self.bus_chanl_num_listbox.delete(0, 'end')
+            self.bus_chanl_num_map = {}
+
+            for bus_chanl_num, display_value in updated_bus_chanl_nums:
+                self.bus_chanl_num_listbox.insert('end', display_value)
+                self.bus_chanl_num_map[display_value] = bus_chanl_num
+
+            self.bus_chanl_label.config(text="CHANNEL_NAME")
+
+        except Exception as e:
+            show_message("Error", f"An error occurred while loading the channel grouping: {e}", type="error",
+                         master=self)
+
+    def section_specifics_checkbox_enable(self):
+        """Toggles the visibility and content of the specifics listboxes based on the checkbox state."""
+        if self.specifics_var.get():
+            # Check if a file is loaded
+            if not self.file_path or not os.path.isfile(self.file_path):
+                # If no file is loaded, prompt the user to load a file
+                self.prompt_excel_load()
+                # Check if a file was successfully loaded after prompting
+                if self.file_path and os.path.isfile(self.file_path):
+                    self.specifics_var.set(True)  # Set the checkbox to checked
+                else:
+                    self.specifics_var.set(False)  # Uncheck the checkbox if no file was loaded
+                    return  # Exit the function if no file is loaded
+
+            # Instead of clearing maps, just load the values into the listboxes
+            self.section_specifics_listboxes_values()
+            self.reset_row_frame.pack(side='top', fill='x', expand=False, padx=5, pady=(0, 0))
+
+            # Disable the checkbox to prevent further modification
+            self.specifics_checkbox.config(state='disabled')
+        else:
+            # Clear the listboxes and reset labels
+            self.prod_num_listbox.delete(0, 'end')
+            self.bus_chanl_num_listbox.delete(0, 'end')
+            self.bus_chanl_label.config(text="BUS_CHANL_NUM")
+            self.row_count_label.config(text="Selected Rows: 0")
+            self.prod_count_label.config(text="Selected Products: 0")
+            self.reset_row_frame.pack_forget()
+
+            # No need to reset the maps here either; just clear the UI elements
+
+    def start_processing(self):
+        """Handles the start of the processing based on the selections."""
+        if self.validate_all():
+            references_month = self.references_month.get()
+            references_year = self.references_year.get()
+            target_start_year = self.target_start_year.get()
+            target_end_year = self.target_end_year.get()
+            file_path = self.file_path
+
+            if self.file_path is None:
+                show_message("Error", "No file selected.", type='error', master=self, custom=True)
+                return
+
+            specifics_enabled = self.specifics_var.get()
+
+            current_selected_bus_chanl_display_values = [self.bus_chanl_num_listbox.get(i) for i in
+                                                         self.bus_chanl_num_listbox.curselection()]
+            if hasattr(self, 'global_selected_channels'):
+                global_selected_bus_chanl_display_values = list(self.global_selected_channels)
+            else:
+                global_selected_bus_chanl_display_values = []
+
+            combined_selected_bus_chanl_display_values = set(
+                current_selected_bus_chanl_display_values + global_selected_bus_chanl_display_values)
+
+            combined_selected_bus_chanl_nums_values = [self.bus_chanl_num_map.get(display_value, display_value) for
+                                                       display_value in combined_selected_bus_chanl_display_values]
+
+            print(f"References Month: {references_month}, Year: {references_year}")
+            print(f"Target Start Year: {target_start_year}, End Year: {target_end_year}")
+            print(f"File Path: {file_path}")
+            print(f"Specifics Enabled: {specifics_enabled}")
+            if specifics_enabled:
+                print(f"Selected BUS_CHANL_NUMs: {combined_selected_bus_chanl_nums_values}")
+
+            if self.output_dir is None:
+                show_message("Error", "No output directory selected.", type='error', master=self, custom=True)
+                return
+
+            start_time = time.time()
+
+            self.call_script(
+                references_month,
+                references_year,
+                target_start_year,
+                target_end_year,
+                file_path,
+                specifics_enabled,
+                None,
+                combined_selected_bus_chanl_nums_values
+            )
+
+            end_time = time.time()
+            duration = end_time - start_time
+            show_message("Info", f"Parsing completed in {duration:.2f} seconds.", type='info', master=self, custom=True)
+        else:
+            show_message("Error", "Validation failed. Please correct the errors and try again.", type='error',
+                         master=self, custom=True)
+
+    def call_script(self, references_month, references_year, target_start_year, target_end_year,
+                    file_path, specifics_enabled, prod_nums, bus_chanl_nums):
+
+        if not self.base_dir:
+            raise ValueError("Base directory is not set.")
+        script_path = os.path.join(self.base_dir, 'parser', 'parser_audience.py')
+        script_path = os.path.abspath(script_path)
+        print(f"Script Path: {script_path}")
+
+        output_dir = self.output_dir
+
+        args = {
+            "references_month": references_month,
+            "references_year": references_year,
+            "target_start_year": target_start_year,
+            "target_end_year": target_end_year,
+            "file_path": file_path,
+            "output_dir": output_dir,
+            "specifics_enabled": specifics_enabled,
+            "prod_nums": prod_nums,
+            "bus_chanl_nums": bus_chanl_nums
+        }
+
+        subprocess.run(["python", script_path, json.dumps(args)])
+
+    def sections_reference_target_datefields(self, parent, context):
+        if context == 'REFERENCE':
+            ttk.Label(parent, text="Date (MM - YYYY):").pack(side='left')
+            self.references_month = ttk.Entry(parent, width=3, validate='key',
+                                              validatecommand=(self.register(self.validate_month), '%P'))
+            self.references_month.pack(side='left', padx=(0, 2))
+            self.references_year = ttk.Entry(parent, width=5, validate='key',
+                                             validatecommand=(self.register(self.validate_year), '%P'))
+            self.references_year.pack(side='left', padx=(2, 10))
+
+            help_label = ttk.Label(parent, text="?", cursor="hand2", font=("Helvetica", 11))
+            help_label.pack(side='left', padx=(2, 10))
+            help_label.bind("<Enter>", self.tooltip_reference_update)
+            help_label.bind("<Leave>", lambda e: self.hide_tooltip())
+
+
+            if self.current_month == 1:
+                self.references_month.insert(0, str(12))
+                self.references_year.insert(0, str(self.current_year - 1))
+            else:
+                self.references_month.insert(0, str(self.current_month - 1))
+                self.references_year.insert(0, str(self.current_year))
+            ttk.Button(parent, text="✓", command=self.validate_references, style='AudienceTab.TButton').pack(
+                side='right', padx=(0, 10), pady=(0, 0))
+        elif context == 'TARGET':
+            ttk.Label(parent, text="From:").pack(side='left')
+            self.target_start_year = ttk.Entry(parent, width=5, validate='key',
+                                               validatecommand=(self.register(self.validate_year), '%P'))
+            self.target_start_year.pack(side='left', padx=(0, 2))
+            self.target_start_year.insert(0, str(self.current_year + 1))
+            ttk.Label(parent, text="To:").pack(side='left')
+            self.target_end_year = ttk.Entry(parent, width=5, validate='key',
+                                             validatecommand=(self.register(self.validate_year), '%P'))
+            self.target_end_year.pack(side='left', padx=(2, 10))
+            self.target_end_year.insert(0, str(self.current_year + 1))
+            ttk.Button(parent, text="✓", command=self.validate_target, style='AudienceTab.TButton').pack(side='right', padx=(0, 10), pady=(0, 0))
+
+    def tooltip_reference_update(self, event):
+        """Dynamically update and show the tooltip based on the current input values."""
+        month_names_fr = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre",
+                          "Octobre", "Novembre", "Décembre"]
+        references_month = self.references_month.get()
+        references_year = self.references_year.get()
+        target_start_year = self.target_start_year.get()
+        target_end_year = self.target_end_year.get()
+
+        if not references_month or not references_year or not target_start_year or not target_end_year:
+            help_text = "Remplir toutes les dates pour obtenir de l'aide"
+            self.show_tooltip(event, help_text)
+            return
+
+        try:
+            references_month_int = int(references_month)
+            if 1 <= references_month_int <= 12:
+                month_str = month_names_fr[references_month_int - 1]
+            else:
+                month_str = month_names_fr[self.current_month - 1]
+        except ValueError:
+            month_str = month_names_fr[self.current_month - 1]
+
+        if target_start_year == target_end_year:
+            if references_month_int == 12:
+                help_text = f'En utilisant toute l\'année {references_year}, calculer {target_start_year}'
+            else:
+                help_text = f'Sans aller au delà de {month_str} {references_year}, calculer {target_start_year}'
+        else:
+            if references_month_int == 12:
+                help_text = f'En utilisant toute l\'année {references_year}, calculer {target_start_year} à {target_end_year} inclus'
+            else:
+                help_text = f'Sans aller au delà de {month_str} {references_year}, calculer {target_start_year} à {target_end_year} inclus'
+
+        self.show_tooltip(event, help_text)
+
+    def load_file(self, path):
+        src_audience_path = self.config_data.get('audience_src')
+        if path:
+            self.section_reference_details_update(path)
+
+    def button_select_sources(self, parent, context):
+        if context == 'REFERENCE':
+            ttk.Button(parent, text="Source File", command=self.prompt_excel_load, style='AudienceTab.TButton').pack(side='left', padx=10)
+        if context == 'TARGET':
+            ttk.Button(parent, text="Forecast Folder", command=self.section_target_output_location, style='AudienceTab.TButton').pack(side='left', padx=10)
+
+    def setup_buttons_and_entries(self, parent, context):
+        """Setup buttons and entry fields for user interaction."""
+        self.button_select_sources(parent, context)
+        self.sections_reference_target_datefields(parent, context)
+        self.setup_show_columns_button(parent, context)
+
+
+
+    def references_file_details(self, parent):
+        """Configure and place the file details label within the given container."""
+        self.file_details_label = ttk.Label(parent, text="Il faut charger le fichier d'audience de référence, Source File.", anchor='w')
+        self.file_details_label.pack(side='top', fill='x', expand=False, padx=10, pady=(10, 5))
+
+    def prompt_excel_load(self):
+        filetypes = [("Excel files", "*.xlsx *.xls")]
+        filepath = filedialog.askopenfilename(filetypes=filetypes)
+        if filepath:
+            self.section_reference_details_update(filepath)
+            self.df = pd.read_excel(filepath)
+
+    def section_reference_details_update(self, file_path):
+        self.file_path = file_path
+        try:
+            df = pd.read_excel(file_path)
+            self.config_manager.update_config('audience_src', file_path)
+            print("File loaded, checking content...")
+            self.df = pd.read_excel(file_path)
+            if df.empty:
+                print("DataFrame is empty after loading.")
+            else:
+                rows, cols = df.shape
+                relative_path = '/'.join(file_path.split('/')[-3:])
+                self.file_details_label.config(text=f".../{relative_path} \t rows: {rows} ~ columns: {cols}")
+        except PermissionError as e:
+            show_message("Error", f"Exception REFERENCE FILE ALREADY OPEN, CLOSE IT:\n {str(e)}", type='error', master=self, custom=True)
+        except Exception as e:
+            print(f"Exception occurred: {str(e)}")
+            print(traceback.format_exc())
+            self.file_details_label.config(text="Failed to load file or file is empty")
+            show_message("Error", f"Exception occurred: {str(e)}", type='error', master=self, custom=True)
+
+    def setup_show_columns_button(self, parent, context):
+        """Sets up a button to show column names from the loaded DataFrame."""
+        if context == 'REFERENCE':
+            self.show_columns_button = ttk.Button(parent, text="Metadata Exploration", command=self.section_reference_button_columns_show, style='AudienceTab.TButton')
+            self.show_columns_button.pack(side='right', padx=10)
+
+    def section_reference_button_columns_show(self):
+        """Displays the column names from the loaded DataFrame."""
+        if self.file_path:
+            try:
+                df = pd.read_excel(self.file_path)
+                columns = '\n'.join(df.columns)
+                show_message("Columns", f"Columns in the file:\n{columns}", type='info', master=self, custom=True)
+            except Exception as e:
+                show_message("Error", f"Failed to load file:\n{str(e)}", type='error', master=self, custom=True)
+        else:
+            show_message("Error", "Load an Excel file first.", type='info', master=self, custom=True)
+
+    def tab_style(self):
+        """Configure styles used within the tab."""
+        style = ttk.Style(self)
+        style.configure('TFrame')
+        style.configure('Title.TLabel', font=('Arial', 12, 'underline'))
+        style.configure('AudienceTab.TButton', padding=[5, 2], font=('Arial', 10))
+
+    def section_references_setup(self):
+        container = ttk.Frame(self)
+        container.pack(side='top', fill='x', expand=False, padx=20, pady=10)
+        ttk.Label(container, text="REFERENCE YEAR OF CALCULATION", style='Title.TLabel').pack(side='top', padx=10, pady=(10, 5))
+        self.references_file_details(container)
+        self.setup_buttons_and_entries(container, 'REFERENCE')
+
+    def section_target_setup(self):
+        container = ttk.Frame(self)
+        container.pack(side='top', fill='x', expand=False, padx=20, pady=10)
+        ttk.Label(container, text="TARGET", style='Title.TLabel').pack(side='top', padx=10, pady=(10, 5))
+
+        self.output_path = ttk.Entry(container)
+        self.output_path.pack(side='top', fill='x', padx=10, pady=(5, 5))
+        self.setup_buttons_and_entries(container, context='TARGET')
+
+        audience_dest = self.config_data.get('audience_dest')
+        if audience_dest:
+            self.output_path.insert(0, audience_dest)
+
+    def view_result(self):
+        output_path = self.output_path.get()
+        print(f"Output path: {output_path}")
+        result_file = os.path.join(output_path, "forecast_audience.xlsx")
+
+        print(f"Result file path: {result_file}")
+        if os.path.isfile(result_file):
+            os.startfile(result_file)
+        else:
+            show_message("Error",
+                         "The result file does not exist. Please make sure the processing is completed successfully.",
+                         type='error', master=self, custom=True)
+
+
+    def validate_all(self):
+        valid_references = self.validate_references()
+
+        valid_target = self.validate_target()
+        return valid_references and valid_target
+
+    def validate_year(self, P):
+        """Validate the year entry to ensure it meets specified conditions."""
+        if P == "" or (P.isdigit() and P.startswith("2") and len(P) <= 4 and int(P) <= 2064):
+            return True
+        return False
+
+    def validate_references(self):
+        if self.file_path:
+            try:
+                df = pd.read_excel(self.file_path)
+                month = int(self.references_month.get())
+                year = int(self.references_year.get())
+
+                current_date = datetime.now()
+                reference_date = datetime(year, month, 1)
+
+                if reference_date >= datetime(current_date.year, current_date.month, 1):
+                    show_message("Error", "The reference date cannot be in the current month or the future.", type='error', master=self, custom=True)
+                    return False
+                else:
+                    return self.validation_references_dates(df, year, month)
+            except ValueError:
+                show_message("Error", "Invalid date. Please enter a valid month and year.", type='error', master=self, custom=True)
+                return False
+            except Exception as e:
+                show_message("Error", f"Failed to load file:\n{str(e)}", type='error', master=self, custom=True)
+                return False
+        else:
+            show_message("Error", "Load an Excel file first.", type='error', master=self, custom=True)
+            return False
+
+    def validate_target(self):
+        if self.file_path:
+            try:
+                if not self.output_path.get():
+                    show_message("Error", "Select an output folder first.", type='error', master=self, custom=True)
+                    return False
+
+                if not self.references_year.get() or not self.references_month.get():
+                    show_message("Error", "A reference date must be set.", type='error', master=self, custom=True)
+                    return False
+
+                reference_year = int(self.references_year.get())
+                reference_month = int(self.references_month.get())
+                start_year = int(self.target_start_year.get())
+                end_year = int(self.target_end_year.get())
+
+                df = pd.read_excel(self.file_path)
+
+                current_year = datetime.now().year
+
+                if start_year == current_year:
+                    show_message("Error", "Target start year cannot be the current year.", type='error', master=self,
+                                 custom=True)
+                    return False
+
+                if start_year > end_year:
+                    show_message("Error", "Target 'From' year cannot be after the target 'To' year.", type='error',
+                                 master=self, custom=True)
+                    return False
+
+                if reference_month != 12:
+                    if start_year < reference_year or end_year < reference_year:
+                        show_message("Error",
+                                     "Target years must be after or equal to the reference year when the reference month is not December.",
+                                     type='error', master=self, custom=True)
+                        return False
+                else:
+                    if start_year <= reference_year or end_year <= reference_year:
+                        show_message("Error",
+                                     "Target years must be strictly after the reference year when the reference month is December.",
+                                     type='error', master=self, custom=True)
+                        return False
+
+                if abs(start_year - end_year) > 10:
+                    show_message("Error", "The difference between start and end year cannot exceed 10 years.",
+                                 type='error', master=self, custom=True)
+                    return False
+                else:
+                    show_message("Validation", "Target years are valid.", type='info', master=self, custom=True)
+                    return True
+            except ValueError:
+                show_message("Error", "Invalid target year. Please enter a valid year.", type='error', master=self,
+                             custom=True)
+                return False
+            except Exception as e:
+                show_message("Error", f"Failed to load file:\n{str(e)}", type='error', master=self, custom=True)
+                return False
+        else:
+            show_message("Error", "Load an Excel file first.", type='error', master=self, custom=True)
+            return False
+
+    def validation_references_dates(self, df, year, month):
+        """Checks if the date exists in the loaded data and updates the user."""
+        mask = (df['PERIOD_YEAR'] == year) & (df['PERIOD_MONTH'] == month)
+        if mask.any():
+            show_message("Validation", "Reference file: Date is valid and found in the file.", type='info', master=self, custom=True)
+        else:
+            specific_data = df[(df['PERIOD_YEAR'] == year)]
+            show_message("Validation",
+                         f"Date not found in the file. Debug: Year({year}), Month({month})\nSample rows where year matches:\n{specific_data.head()}",
+                         type='error', master=self, custom=True)
+            return False
+        return True
+
+    def validate_month(self, P):
+        """Validate the month entry to ensure it's empty or a valid month number."""
+        return P == "" or (P.isdigit() and 1 <= int(P) <= 12)
+
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/ui/__init__.py
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/ui/ui_config.py
+import os
+import tkinter as tk
+from tkinter import ttk, filedialog
+from functools import partial
+
+from utilities.utils import center_window, create_menu, show_message, clean_file_path, create_styled_button, \
+    set_window_icon
+
+
+class ConfigUI(tk.Toplevel):
+    def __init__(self, master, tabs):
+        super().__init__(master)
+        self.title("Configuration")
+        self.tabs = tabs
+        self.entries = {}
+        self.config_manager = master.config_manager
+        self.init_ui()
+
+    def init_ui(self):
+        """Initializes the user interface components and lays out the window."""
+        center_window(self, self.master)
+        set_window_icon(self)
+        self.resizable(False, False)
+        self.create_menus()
+        self.create_frames()
+        self.transient(self.master)
+        self.grab_set()
+        self.wait_window(self)
+
+    def create_menus(self):
+        """Creates menu items for the window."""
+        menu_items = [
+            {"label": "Sources", "command": partial(self.toggle_frame, "sources")},
+            {"label": "Config", "command": partial(self.toggle_frame, ".config")},
+        ]
+        create_menu(self, menu_items)
+
+    def create_frames(self):
+        """Initializes frames for configuration settings and source file settings."""
+        self.sources_destinations_frame = ttk.Frame(self)
+        self.config_frame = ttk.Frame(self)
+        self.build_sources_frame()
+        self.build_config_frame()
+        self.sources_destinations_frame.grid(row=0, column=0, sticky="nsew")
+        self.config_frame.grid(row=0, column=0, sticky="nsew")
+        self.config_frame.grid_remove()
+
+        self.sources_destinations_frame.columnconfigure(0, weight=1)
+        self.sources_destinations_frame.columnconfigure(1, weight=1)
+        self.sources_destinations_frame.columnconfigure(2, weight=1)
+
+    def build_sources_frame(self):
+        """Creates user interface for source file settings."""
+        for idx, tab_name in enumerate(self.tabs):
+            self.create_source_widgets(tab_name, idx)
+            self.set_initial_path(tab_name)
+
+    def create_source_widgets(self, tab_name, row):
+        """Helper function to create label, entry, and button for a source file."""
+        if tab_name.lower() == "cost":
+            key = "cost_src"
+            label_text = "Cost Reference file:"
+        else:
+            key = f"{tab_name.lower()}_src"
+            label_text = f"{tab_name} Reference file:"
+
+        ttk.Label(self.sources_destinations_frame, text=label_text).grid(row=row * 2, column=0, columnspan=3, padx=10, pady=(10, 5), sticky="w")
+
+        container_frame = ttk.Frame(self.sources_destinations_frame)
+        container_frame.grid(row=row * 2 + 1, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
+        entry = ttk.Entry(container_frame)
+        entry.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        ttk.Button(container_frame, text="Browse", command=lambda e=entry: self.select_file(e)).grid(row=1, column=0, padx=5, pady=5, sticky="ew")
+
+        container_frame.columnconfigure(0, weight=1)
+        container_frame.rowconfigure(0, weight=1)
+        container_frame.rowconfigure(1, weight=1)
+
+        self.entries[key] = entry
+
+    def set_initial_path(self, tab_name):
+        """Sets the initial path in the entry field from .config."""
+        key = f"{tab_name.lower()}_src"
+        if tab_name.lower() == "cost":
+            key = "cost_src"
+        if key in self.config_manager.config_data:
+            self.entries[key].delete(0, tk.END)
+            self.entries[key].insert(0, self.config_manager.config_data[key])
+
+    def build_config_frame(self):
+        """Creates user interface for configuration management."""
+        create_styled_button(self.config_frame, "Load Configuration", command=self.load_configuration, width=20).pack(pady=10, expand=True, fill="x")
+        create_styled_button(self.config_frame, "View Configuration", command=self.view_configuration, width=20).pack(pady=10, expand=True, fill="x")
+        create_styled_button(self.config_frame, "Save Configuration", command=self.save_configuration, width=20).pack(pady=10, expand=True, fill="x")
+
+    def toggle_frame(self, frame_name):
+        """Toggles between different frames in the UI based on the user's choice."""
+        if frame_name == ".config":
+            self.sources_destinations_frame.grid_remove()
+            self.config_frame.grid()
+        else:
+            self.config_frame.grid_remove()
+            self.sources_destinations_frame.grid()
+
+    def select_file(self, entry_field):
+        """Handles selecting a file and updating the corresponding entry field."""
+        file_selected = filedialog.askopenfilename(filetypes=[("All Files", "*.*"), ("Excel Files", "*.xls;*.xlsx"), ("Text Files", "*.txt"), ("CSV Files", "*.csv")])
+        if file_selected:
+            entry_field.delete(0, tk.END)
+            entry_field.insert(0, file_selected)
+
+    def load_configuration(self):
+        file_selected = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
+        if file_selected:
+            try:
+                self.config_manager.load_config(file_selected)
+                show_message("Load Configuration", "Configuration loaded successfully!", type="info", master=self, custom=True)
+            except Exception as e:
+                show_message("Error Loading Configuration", f"An error occurred: {str(e)}", type="info", master=self, custom=True)
+
+    def save_configuration(self):
+        """Saves the current configuration settings."""
+        for key, entry in self.entries.items():
+            cleaned_path = clean_file_path(entry.get())
+            self.config_manager.update_config(key, cleaned_path)
+        self.config_manager.save_config()
+        show_message("Save Configuration", "Configuration saved successfully!", type="info", master=self, custom=True)
+
+    def view_configuration(self):
+        config_path = self.config_manager.config_file
+
+        if os.path.exists(config_path):
+            os.startfile(config_path)
+        else:
+            show_message("View Configuration", "Configuration file does not exist.", type="info", master=self, custom=True)
+
+    def center_window(self):
+        """Centers the window on the screen based on the master window's size."""
+        window_width, window_height = 420, 650
+        x = self.master.winfo_x() + (self.master.winfo_width() - window_width) // 2
+        y = self.master.winfo_y() + (self.master.winfo_height() - window_height) // 2
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/ui/tab_cost.py
+import os
+import tkinter as tk
+import tkinter.font as tkFont
+from datetime import timedelta, datetime
+from tkinter import ttk, filedialog
+
+import pandas as pd
+from dateutil.relativedelta import relativedelta
+from tkcalendar import DateEntry
+
+from parser.cps_over_mg_subs import CpsOverMgSubsHandler
+from parser.cps_over_mg_subs_index import CpsOverMgSubsIndexHandler
+from parser.fixedFee_channelGroupLevel import FixedFeeChannelGroupLevelHandler
+from parser.fixedFee_cogs import FixedFeeCogsLevelHandler
+from parser.fixedFee_index import FixedFeeIndexLevelHandler
+from parser.fixedFee_providerLevel import FixedFeeProviderLevelHandler
+from parser.free import FreeLevelHandler
+from utilities import utils
+from utilities.config_manager import ConfigManager
+from utilities.utils import show_message, set_window_icon
+
+
+class CostTab(ttk.Frame):
+    def __init__(self, parent, base_dir, config_manager=None, config_ui_callback=None):
+        super().__init__(parent)
+        self.model_columns = self.get_model_columns()
+        self.config_manager = config_manager
+        self.config_ui_callback = config_ui_callback
+        self.config_data = config_manager.get_config()
+        self.file_path = self.config_data.get('cost_src', None)
+        self.data = None
+        self.network_name_var = tk.StringVar()
+        self.cnt_name_grp_var = tk.StringVar()
+        self.prod_en_name_var = tk.StringVar()
+        self.business_model_var = tk.StringVar()
+        self.allocation_var = tk.StringVar()
+        self.new_deal_popup_open = False
+        self.view_deals_popup_open = False
+
+        self.base_dir = base_dir
+
+        self.init_ui()
+
+    def generate_template(self, new_row):
+        print(f"Debug: CT_TYPE={new_row['CT_TYPE']}, variable/fix={new_row['variable/fix']}")
+        output_dir = os.path.abspath(os.path.join(self.config_data.get('cost_dest', ''), '../outputs'))
+        working_contracts_file = os.path.join(output_dir, 'working_contracts.xlsx')
+
+        if not os.path.exists(output_dir):
+            print(f"Debug: Output directory '{output_dir}' does not exist. Creating it.")
+            os.makedirs(output_dir)
+        else:
+            print(f"Debug: Output directory '{output_dir}' already exists.")
+
+        print(f"Debug: Working contracts file path: {working_contracts_file}")
+
+        business_model = new_row['Business model'].capitalize()
+
+        date_formats = ['%d-%m-%Y', '%d-%m-%y']
+
+        def parse_date(date_str):
+            for fmt in date_formats:
+                try:
+                    return pd.to_datetime(date_str, format=fmt, dayfirst=True)
+                except ValueError:
+                    continue
+            raise ValueError(f"Date {date_str} is not in a recognized format")
+
+        try:
+            new_row['CT_STARTDATE'] = parse_date(new_row['CT_STARTDATE'])
+            new_row['CT_ENDDATE'] = parse_date(new_row['CT_ENDDATE'])
+        except Exception as e:
+            print(f"Error converting dates: {e}")
+            show_message("Error", f"Invalid date format in CT_STARTDATE or CT_ENDDATE: {e}", master=self, custom=True)
+            return
+
+        start_year = new_row['CT_STARTDATE'].year
+        end_year = new_row['CT_ENDDATE'].year
+
+        rows_to_add = []
+        for year in range(start_year, end_year + 1):
+            row_copy = new_row.copy()
+            row_copy['YEAR'] = year
+            row_copy['CT_STARTDATE'] = row_copy['CT_STARTDATE'].strftime('%d-%m-%Y')
+            row_copy['CT_ENDDATE'] = row_copy['CT_ENDDATE'].strftime('%d-%m-%Y')
+            rows_to_add.append(row_copy)
+
+        new_df = pd.DataFrame(rows_to_add)
+
+        try:
+            if not os.path.exists(working_contracts_file):
+                print(f"Debug: File '{working_contracts_file}' does not exist. Creating new file.")
+                with pd.ExcelWriter(working_contracts_file, engine='openpyxl') as writer:
+                    new_df.to_excel(writer, sheet_name=business_model, index=False)
+                    print(f"Debug: Created new working contracts file with sheet '{business_model}'.")
+            else:
+                print(f"Debug: File '{working_contracts_file}' exists. Appending data.")
+                with pd.ExcelWriter(working_contracts_file, engine='openpyxl', mode='a',
+                                    if_sheet_exists='overlay') as writer:
+                    try:
+                        existing_df = pd.read_excel(working_contracts_file, sheet_name=business_model)
+                        updated_df = pd.concat([existing_df, new_df], ignore_index=True)
+                    except ValueError:
+                        updated_df = new_df
+                    updated_df.to_excel(writer, sheet_name=business_model, index=False)
+                    print(f"Debug: Updated '{business_model}' sheet in the working contracts file.")
+
+        except PermissionError:
+            show_message("Error", "Please close the 'working_contracts.xlsx' file and try saving again.", master=self,
+                         custom=True)
+            return
+
+        # show_message("Success",
+        #              f"Rows added to {working_contracts_file} under '{business_model}' sheet.",
+        #              master=self, custom=True)
+
+
+    def get_model_columns(self):
+        return {
+            ### OK 100%
+            'Fixed fee': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE',
+                           'CT_FIXFEE_NEW', 'CT_AUTORENEW', 'CT_NOTICE_DATE', 'CT_NOTICE_PER',
+                          'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL'],
+
+            'fixed fee': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE',
+                           'CT_FIXFEE_NEW', 'CT_AUTORENEW', 'CT_NOTICE_DATE', 'CT_NOTICE_PER',
+                          'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL'],
+
+            'Free': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE',
+                      'CT_AUTORENEW', 'CNT_NAME_GRP', 'CT_NOTICE_DATE', 'CT_NOTICE_PER',
+                     'CT_AVAIL_IN_SCARLET_FR',
+                     'CT_AVAIL_IN_SCARLET_NL', ],
+
+            'free': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE',
+                    'CT_AUTORENEW', 'CNT_NAME_GRP', 'CT_NOTICE_DATE', 'CT_NOTICE_PER',
+                     'CT_AVAIL_IN_SCARLET_FR',
+                     'CT_AVAIL_IN_SCARLET_NL', ],
+
+            'fixed fee + index': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE', 'CT_FIXFEE_NEW', 'CT_INDEX', 'CT_AUTORENEW',
+                                  'CT_NOTICE_DATE', 'CT_NOTICE_PER', 'CT_AVAIL_IN_SCARLET_FR',
+                                  'CT_AVAIL_IN_SCARLET_NL'],
+
+            'Fixed fee cogs': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE',
+                                'CT_FIXFEE_NEW', 'CT_AUTORENEW', 'CT_NOTICE_DATE',
+                               'CT_NOTICE_PER', 'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL'],
+
+            'fixed fee cogs': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'CT_FIXFEE', 'CT_FIXFEE_NEW',
+                'Business model'
+            ],
+
+            'CPS Over MG Subs': ['Business model', 'allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE', 'CT_VARFEE_NEW', 'CT_MIN_SUBS', 'CT_AUTORENEW', 'CT_NOTICE_DATE', 'CT_NOTICE_PER', 'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL'],
+
+
+            'CPS Over MG Subs + index': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME',
+                'CT_TYPE', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'CT_INDEX', 'CT_MG', 'CT_VARFEE', 'CT_VARFEE_NEW',
+                'CT_STEP1_SUBS', 'CT_STEP2_SUBS', 'CT_STEP3_SUBS'
+            ],
+            'Revenue share over MG subs': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME',
+                'CT_TYPE', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'Revenue share %', 'CT_STEP1_SUBS',
+                'CT_STEP2_SUBS', 'CT_STEP3_SUBS'
+            ],
+            'CPS on product Park': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME',
+                'CT_TYPE', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'PROD_PRICE', 'CT_STEP1_SUBS', 'CT_STEP2_SUBS',
+                'CT_STEP3_SUBS'  #, '#Subscriber', 'PROD_PRICE_VAT_EXCL'
+            ],
+            'CPS on volume regionals + index': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME',
+                'CT_TYPE', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'CT_INDEX', '#Subscriber',
+                'CT_STEP1_SUBS', 'CT_STEP2_SUBS', 'CT_STEP3_SUBS'
+            ],
+            'Event Based INTEC': [
+                'CT_STARTDATE', 'CT_ENDDATE', 'allocation', 'NETWORK_NAME', 'CNT_NAME_GRP', 'PROD_EN_NAME',
+                'CT_TYPE', 'CT_NOTICE_DATE', 'CT_AUTORENEW', 'CT_NOTICE_PER',
+                'CT_AVAIL_IN_SCARLET_FR', 'CT_AVAIL_IN_SCARLET_NL', 'CT_VARFEE', 'CT_VARFEE_NEW'
+            ],
+            'Revenue share': [
+                'CT_TYPE', 'allocation'
+            ],
+            'CPS- 5 steps': [
+                'CT_TYPE', 'allocation'
+            ],
+            '5 steps CPS': [
+                'CT_TYPE', 'allocation'
+            ],
+        }
+
+    def load_file(self, path):
+        self.file_path = path
+        self.load_cost_reference_file(path)
+
+    def convert_excel_date(self, excel_serial):
+        """Convert an Excel serial date to a Python datetime object."""
+        try:
+            if pd.isna(excel_serial):
+                return None
+            if isinstance(excel_serial, (int, float)):
+                base_date = datetime(1899, 12, 30)
+                return base_date + timedelta(days=int(excel_serial))
+            return pd.to_datetime(excel_serial, errors='coerce')
+        except Exception as e:
+            print(f"Error converting date: {excel_serial} - {e}")
+            return None
+
+    def load_cost_reference_file(self, file_path):
+        try:
+            self.data = pd.read_excel(file_path, sheet_name='all contract cost file')
+
+            self.data['CT_STARTDATE'] = self.data['CT_STARTDATE'].apply(self.convert_excel_date)
+            self.data['CT_ENDDATE'] = self.data['CT_ENDDATE'].apply(self.convert_excel_date)
+
+            self.populate_dropdowns()
+
+            self.network_name_dropdown.config(state='normal')
+            self.cnt_name_grp_dropdown.config(state='normal')
+            self.business_model_dropdown.config(state='normal')
+            self.allocation_dropdown.config(state='normal')
+
+            self.display_metadata(self.network_name_var.get(), self.cnt_name_grp_var.get(),
+                                  self.business_model_var.get())
+        except Exception as e:
+            show_message("Error", f"Failed to load cost file: {e}", type='error', master=self, custom=True)
+
+    def load_cost_data(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Cost File",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            self.config_manager.update_config('cost_src', file_path)
+            self.config_manager.save_config()
+
+            self.load_file(file_path)
+        else:
+            print("Invalid file path:", file_path)
+
+    def init_ui(self):
+        style = ttk.Style()
+        style.configure("Custom.TButton", font=('Helvetica', 10))
+
+        top_frame = ttk.Frame(self)
+        top_frame.grid(row=0, column=0, pady=10, padx=10, sticky="ew")
+
+        tree_container = ttk.Frame(self)
+        tree_container.grid(row=1, column=0, pady=10, padx=10, sticky="nsew")
+
+        self.load_cost_button = ttk.Button(
+            top_frame, text="Cost File", command=self.load_cost_data, width=9, style='AudienceTab.TButton'
+        )
+        self.load_cost_button.grid(row=0, column=0, pady=5, padx=4, sticky="w")
+        self.load_cost_button.bind("<Enter>", lambda e: self.show_tooltip(
+            e,
+            "Business model\nsheet: all contract cost file\ncolumns: 'NETWORK_NAME', 'CNT_NAME_GRP', 'Business model'")
+                                   )
+        self.load_cost_button.bind("<Leave>", lambda e: self.hide_tooltip())
+
+        self.refresh_fields_button = ttk.Button(
+            top_frame, text="Refresh", command=self.clear_fields, width=9, style='AudienceTab.TButton'
+        )
+        self.refresh_fields_button.grid(row=1, column=0, pady=5, padx=4, sticky="w")
+
+        ttk.Label(top_frame, text="Network:", font=('Helvetica', 10)).grid(
+            row=0, column=3, pady=5, padx=4, sticky="e"
+        )
+        self.network_name_dropdown = ttk.Combobox(
+            top_frame, textvariable=self.network_name_var, state="disabled", font=('Helvetica', 10)
+        )
+        self.network_name_dropdown.grid(row=0, column=4, pady=5, padx=4)
+
+        ttk.Label(top_frame, text="Channel:", font=('Helvetica', 10)).grid(
+            row=0, column=5, pady=5, padx=4, sticky="e"
+        )
+        self.cnt_name_grp_dropdown = ttk.Combobox(
+            top_frame, textvariable=self.cnt_name_grp_var, state="disabled", font=('Helvetica', 10)
+        )
+        self.cnt_name_grp_dropdown.grid(row=0, column=6, pady=5, padx=4)
+
+        ttk.Label(top_frame, text="Model:", font=('Helvetica', 10)).grid(
+            row=0, column=1, pady=5, padx=4, sticky="e"
+        )
+        self.business_model_dropdown = ttk.Combobox(
+            top_frame, textvariable=self.business_model_var, state="disabled", font=('Helvetica', 10)
+        )
+        self.business_model_dropdown.grid(row=0, column=2, pady=5, padx=4)
+
+        ttk.Label(top_frame, text="Allocation:", font=('Helvetica', 10)).grid(
+            row=1, column=1, pady=5, padx=4, sticky="e"
+        )
+        self.allocation_var = tk.StringVar()
+        self.allocation_dropdown = ttk.Combobox(
+            top_frame, textvariable=self.allocation_var, state="disabled", font=('Helvetica', 10)
+        )
+        self.allocation_dropdown.grid(row=1, column=2, pady=5, padx=4)
+
+        self.tree = ttk.Treeview(tree_container, columns=(), show="headings")
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        tree_xscroll = ttk.Scrollbar(tree_container, orient="horizontal", command=self.tree.xview)
+        tree_xscroll.grid(row=1, column=0, sticky="ew")
+        self.tree.configure(xscrollcommand=tree_xscroll.set)
+
+        tree_container.columnconfigure(0, weight=1)
+        tree_container.rowconfigure(0, weight=1)
+
+        self.network_name_dropdown.bind("<<ComboboxSelected>>", self.update_dropdowns)
+        self.cnt_name_grp_dropdown.bind("<<ComboboxSelected>>", self.update_dropdowns)
+        self.business_model_dropdown.bind("<<ComboboxSelected>>", self.update_dropdowns)
+        self.allocation_dropdown.bind("<<ComboboxSelected>>", self.update_dropdowns)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+    def populate_dropdowns(self):
+        self.network_name_dropdown.set('')
+        self.cnt_name_grp_dropdown.set('')
+        self.business_model_dropdown.set('')
+        self.allocation_dropdown.set('')
+
+        if self.data is None or self.data.empty:
+            self.network_name_dropdown['values'] = ['']
+            self.cnt_name_grp_dropdown['values'] = ['']
+            self.business_model_dropdown['values'] = ['']
+            self.allocation_dropdown['values'] = ['']
+
+            self.network_name_dropdown.config(state='disabled')
+            self.cnt_name_grp_dropdown.config(state='disabled')
+            self.business_model_dropdown.config(state='disabled')
+            self.allocation_dropdown.config(state='disabled')
+        else:
+            self.network_name_dropdown.config(state='normal')
+            self.cnt_name_grp_dropdown.config(state='normal')
+            self.business_model_dropdown.config(state='normal')
+            self.allocation_dropdown.config(state='normal')
+
+            self.data['NETWORK_NAME'] = self.data['NETWORK_NAME'].astype(str)
+            self.data['CNT_NAME_GRP'] = self.data['CNT_NAME_GRP'].astype(str)
+            self.data['Business model'] = self.data['Business model'].astype(str)
+            self.data['allocation'] = self.data['allocation'].astype(str)
+
+            network_names = [''] + sorted(self.data['NETWORK_NAME'].dropna().unique())
+            cnt_name_grps = [''] + sorted(self.data['CNT_NAME_GRP'].dropna().unique())
+            business_models = [''] + sorted(self.data['Business model'].dropna().unique())
+            allocations = [''] + sorted(self.data['allocation'].dropna().unique())
+
+            self.network_name_dropdown['values'] = network_names
+            self.cnt_name_grp_dropdown['values'] = cnt_name_grps
+            self.business_model_dropdown['values'] = business_models
+            self.allocation_dropdown['values'] = allocations
+
+    def update_dropdowns(self, event=None):
+        if self.data.empty:
+            return
+
+        network_name_selected = self.network_name_var.get()
+        cnt_name_grp_selected = self.cnt_name_grp_var.get()
+        business_model_selected = self.business_model_var.get()
+        allocation_selected = self.allocation_var.get()
+
+        filtered_data = self.data.copy()
+        if network_name_selected:
+            filtered_data = filtered_data[filtered_data['NETWORK_NAME'] == network_name_selected]
+        if cnt_name_grp_selected:
+            filtered_data = filtered_data[filtered_data['CNT_NAME_GRP'] == cnt_name_grp_selected]
+        if business_model_selected:
+            filtered_data = filtered_data[filtered_data['Business model'] == business_model_selected]
+        if allocation_selected:
+            filtered_data = filtered_data[filtered_data['allocation'] == allocation_selected]
+
+        network_names = [''] + sorted(filtered_data['NETWORK_NAME'].dropna().unique())
+        current_network_name = self.network_name_var.get()
+        self.network_name_dropdown['values'] = network_names
+        self.network_name_var.set(current_network_name if current_network_name in network_names else '')
+
+        cnt_name_grps = [''] + sorted(filtered_data['CNT_NAME_GRP'].dropna().unique())
+        current_cnt_name_grp = self.cnt_name_grp_var.get()
+        self.cnt_name_grp_dropdown['values'] = cnt_name_grps
+        self.cnt_name_grp_var.set(current_cnt_name_grp if current_cnt_name_grp in cnt_name_grps else '')
+
+        business_models = [''] + sorted(filtered_data['Business model'].dropna().unique())
+        current_business_model = self.business_model_var.get()
+        self.business_model_dropdown['values'] = business_models
+        self.business_model_var.set(current_business_model if current_business_model in business_models else '')
+
+        allocations = [''] + sorted(filtered_data['allocation'].dropna().unique())
+        current_allocation = self.allocation_var.get()
+        self.allocation_dropdown['values'] = allocations
+        self.allocation_var.set(current_allocation if current_allocation in allocations else '')
+
+        if network_name_selected or cnt_name_grp_selected or business_model_selected or allocation_selected:
+            self.display_metadata(network_name_selected, cnt_name_grp_selected, allocation_selected)
+
+    def display_metadata(self, network_name, cnt_name_grp=None, allocation=None):
+        # refresh table
+        if hasattr(self, 'tree'):
+            self.tree.destroy()
+
+        # frame dédié pour le treeview et les scrollbars
+        tree_frame = ttk.Frame(self)
+        tree_frame.grid(row=2, column=0, columnspan=3, pady=10, padx=10, sticky="nsew")
+
+        #hauteur minimale pour e viter le resizing involontaire
+        columns = self.model_columns.get(self.business_model_var.get(), [])
+        # hauteur fixe
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
+
+        # vertical scroll
+        y_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        y_scroll.grid(row=0, column=1, sticky="ns")
+
+        # horiz scroll
+        x_scroll = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
+        x_scroll.grid(row=1, column=0, sticky="ew")
+
+        # scrolbar to treeview
+        self.tree.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+
+        # permet expand
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+        # main layout, évite resizing
+        self.grid_rowconfigure(2, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=tkFont.Font().measure(col) + 20)
+
+        # filtre data par copie
+        filtered_rows = self.data[self.data['NETWORK_NAME'] == network_name].copy()
+        if cnt_name_grp:
+            filtered_rows = filtered_rows[filtered_rows['CNT_NAME_GRP'] == cnt_name_grp]
+        if allocation:
+            filtered_rows = filtered_rows[filtered_rows['allocation'] == allocation]
+
+        # chargement data additionnels
+        cost_dest = self.config_data.get('cost_dest', '')
+        working_contracts_file = os.path.join(cost_dest, 'working_contracts.xlsx')
+        additional_data = pd.DataFrame()
+
+        if os.path.exists(working_contracts_file):
+            print(f"Debug: Loading additional contracts from {working_contracts_file}")
+            try:
+                additional_data = pd.read_excel(working_contracts_file, sheet_name=self.business_model_var.get())
+
+                additional_data_filtered = additional_data[additional_data['NETWORK_NAME'] == network_name].copy()
+                if cnt_name_grp:
+                    additional_data_filtered = additional_data_filtered[
+                        additional_data_filtered['CNT_NAME_GRP'] == cnt_name_grp]
+                additional_data_filtered['Source'] = 'cost_dest'
+                additional_data = additional_data_filtered
+            except ValueError as e:
+                print(f"Debug: {e}. Proceeding with only reference entries.")
+                additional_data = pd.DataFrame()
+
+        if not filtered_rows.empty and not additional_data.empty:
+            combined_data = pd.concat([filtered_rows, additional_data], ignore_index=True)
+        elif not filtered_rows.empty:
+            combined_data = filtered_rows
+        else:
+            combined_data = additional_data
+
+        if 'CT_STARTDATE' in combined_data.columns:
+            combined_data['CT_STARTDATE'] = pd.to_datetime(combined_data['CT_STARTDATE'], errors='coerce').dt.strftime(
+                '%d-%m-%Y')
+        if 'CT_ENDDATE' in combined_data.columns:
+            combined_data['CT_ENDDATE'] = pd.to_datetime(combined_data['CT_ENDDATE'], errors='coerce').dt.strftime(
+                '%d-%m-%Y')
+
+        # ordre par date
+        if 'CT_STARTDATE' in combined_data.columns:
+            try:
+                combined_data.sort_values(by='CT_STARTDATE', ascending=False, inplace=True)
+            except Exception as e:
+                print(f"Warning: Could not sort by CT_STARTDATE due to mixed data types: {e}")
+
+        for _, row in combined_data.iterrows():
+            values = [row.get(col, '') for col in columns]
+            if row.get('Source') == 'cost_dest':
+                self.tree.insert("", tk.END, values=values, tags=('highlight',))
+            else:
+                self.tree.insert("", tk.END, values=values)
+
+        self.tree.tag_configure('highlight', background='#ffffcc')
+
+        for col in columns:
+            max_width = max((tkFont.Font().measure(str(self.tree.set(item, col))) for item in self.tree.get_children()),
+                            default=100)
+            self.tree.column(col, width=max_width + 20)
+
+        # treeview occupe la taille maximale
+        self.grid_rowconfigure(2, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+    def open_new_deal_popup(self):
+        if self.new_deal_popup_open:
+            show_message("Warning", "New Deal menu already open.", master=self, custom=True)
+            return
+
+        self.new_deal_popup_open = True
+        #permet de loader le cost file des settings si pas encore fait
+        if not self.file_path or self.data is None:
+            #en cliquant sur New Deal ça le load puis ça montre le New Deal
+            config_cost_src = self.config_data.get('cost_src', None)
+            if config_cost_src and os.path.exists(config_cost_src):
+                show_message(f"Error", "Loading cost_src from {config_cost_src}", master=self,
+                                 custom=True)
+                #Nécessaire pour que le New Deal fonctionne
+                self.load_file(config_cost_src)
+                if self.data is None:
+                    show_message("Error", "Failed to load cost source data. Please check the cost file.", master=self,
+                                 custom=True)
+                    return
+            else:
+                show_message("Error", "Cost source file is not loaded. Please load a cost file first.", master=self,
+                             custom=True)
+                return
+
+        network_name = self.network_name_var.get()
+        allocation = self.allocation_var.get()
+        business_model = self.business_model_var.get()
+
+        new_deal_popup = tk.Toplevel(self)
+        new_deal_popup.title("New Deal")
+        new_deal_popup.geometry("1000x750")
+        new_deal_popup.grid_rowconfigure(0, weight=1)
+        new_deal_popup.grid_columnconfigure(0, weight=1)
+        set_window_icon(new_deal_popup)
+
+        new_deal_popup.protocol("WM_DELETE_WINDOW", lambda: self.close_new_deal_popup(new_deal_popup))
+
+        business_model_var = tk.StringVar(value=business_model)
+        entry_vars = {}
+        entry_vars['NETWORK_NAME'] = tk.StringVar(value=network_name)
+        main_frame = ttk.Frame(new_deal_popup)
+        main_frame.grid(row=0, column=0, sticky='nsew')
+        main_frame.grid_rowconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(main_frame)
+        canvas.grid(row=0, column=0, sticky='nsew')
+
+        def on_mouse_scroll(event):
+            if event.widget == canvas or event.widget.winfo_containing(event.x_root, event.y_root) == canvas:
+                if event.delta:
+                    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                elif event.num == 4:
+                    canvas.yview_scroll(-1, "units")
+                elif event.num == 5:
+                    canvas.yview_scroll(1, "units")
+
+        canvas.bind("<MouseWheel>", on_mouse_scroll)
+        canvas.bind("<Button-4>", on_mouse_scroll)
+        canvas.bind("<Button-5>", on_mouse_scroll)
+
+        v_scrollbar = ttk.Scrollbar(main_frame, orient='vertical', command=canvas.yview)
+        v_scrollbar.grid(row=0, column=1, sticky='ns')
+
+        h_scrollbar = ttk.Scrollbar(main_frame, orient='horizontal', command=canvas.xview)
+        h_scrollbar.grid(row=1, column=0, sticky='ew')
+
+        canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+        content_frame = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=content_frame, anchor='nw')
+
+        def on_frame_configure(event):
+            """Ensures the canvas scroll region is updated based on the content size."""
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        content_frame.bind("<Configure>", on_frame_configure)
+
+        main_frame.grid_rowconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
+        left_frame = ttk.Frame(content_frame)
+        left_frame.grid(row=0, column=0, padx=10, pady=5, sticky='nsew')
+
+        dynamic_widgets = []
+
+        def clear_dynamic_widgets():
+            for widget in dynamic_widgets:
+                widget.grid_forget()
+                widget.destroy()
+            dynamic_widgets.clear()
+
+        allocation_combobox = None
+        allocation_options = {
+            'Fixed fee': ['channel group level', 'product level', 'provider level', 'provider level (gulli excluded)'],
+            'fixed fee + index': ['provider & product level', 'provider level', 'provider level & product(basic)'],
+            'Fixed fee cogs': ['channel group level', 'channel level', 'product level', 'provider level'],
+            'Free': ['channel group level', 'product level'],
+            'CPS Over MG Subs': ['provider level', 'provider level & product(options)'],
+            'CPS Over MG Subs + index': ['provider & product level'],
+            'Revenue share over MG subs': ['provider level'],
+            'CPS on product park': [
+                'channel group level', 'subscriber based - provider level', 'subscriber based (only basic)',
+                'subscriber based (pxs/scarlet)', 'suscriber based FR/NL(only basic)', 'product price level(basic)'
+            ],
+            'CPS on volume regionals + index': ['provider level', 'subscriber based - provider level'],
+            'Event Based INTEC': ['product level', 'provider level'],
+            'Revenue share': ['channel group level', 'product level'],
+            'CPS- 5 steps': ['provider level']
+        }
+
+        def update_allocation_options(selected_model):
+            options = allocation_options.get(selected_model, sorted(self.data['allocation'].dropna().unique()))
+            allocation_combobox['values'] = options
+            if options:
+                allocation_combobox.set(options[0])
+
+        def update_fields_based_on_business_model(event=None):
+            clear_dynamic_widgets()
+
+            selected_model = business_model_var.get()
+            current_columns = self.model_columns.get(selected_model, [])
+
+            exclude_fixfee_models = [
+                'free', 'Free', 'CPS Over MG Subs', 'CPS Over MG Subs + index', 'CPS on product Park',
+                'CPS on volume regionals + index', 'Event Based INTEC', 'Revenue share', 'CPS-5 steps'
+            ]
+
+            required_fields = ['allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE']
+
+            if selected_model not in exclude_fixfee_models:
+                field_order = ['Business model*', 'allocation*', 'NETWORK_NAME*', 'DATA_TYPE',
+                               'CT_FIXFEE_NEW*', 'CT_STARTDATE*', 'CT_ENDDATE*']
+            else:
+                field_order = ['Business model*', 'allocation*', 'NETWORK_NAME*', 'DATA_TYPE',
+                               'CT_STARTDATE*', 'CT_ENDDATE*']
+
+            field_order += [col for col in current_columns if col not in [
+                'Business model', 'allocation', 'NETWORK_NAME', 'DATA_TYPE', 'CT_FIXFEE', 'CT_FIXFEE_NEW',
+                'CT_STARTDATE', 'CT_ENDDATE']]
+
+            for i, col in enumerate(field_order, start=1):
+                col_without_asterisk = col.replace('*', '')
+                entry_vars[col_without_asterisk] = tk.StringVar()
+                new_width = int(20 * 1.10)
+
+                if col_without_asterisk == 'Business model':
+                    tk.Label(left_frame, text="Business model").grid(row=i + 2, column=0, padx=10, pady=5, sticky='e')
+                    business_model_combobox = ttk.Combobox(left_frame, textvariable=business_model_var, width=new_width)
+                    business_model_combobox['values'] = [model for model in self.model_columns.keys()]
+                    business_model_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(business_model_combobox)
+                    business_model_combobox.set(selected_model)
+                    business_model_combobox.bind("<<ComboboxSelected>>", update_fields_based_on_business_model)
+                    continue
+
+                label = tk.Label(left_frame, text=col)
+                label.grid(row=i + 2, column=0, padx=10, pady=5, sticky='e')
+                dynamic_widgets.append(label)
+
+                if col_without_asterisk == 'CT_STARTDATE':
+                    ct_startdate_entry = DateEntry(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                   date_pattern='dd-mm-yyyy', width=new_width)
+                    ct_startdate_entry.grid(row=i + 2, column=1, padx=10, pady=5, sticky='ew')
+                    dynamic_widgets.append(ct_startdate_entry)
+
+                elif col_without_asterisk == 'CT_ENDDATE':
+                    ct_enddate_entry = DateEntry(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                 date_pattern='dd-mm-yyyy', width=new_width)
+                    ct_enddate_entry.grid(row=i + 2, column=1, padx=10, pady=5, sticky='ew')
+                    dynamic_widgets.append(ct_enddate_entry)
+
+                elif col_without_asterisk == 'CT_AVAIL_IN_SCARLET_FR' or col_without_asterisk == 'CT_AVAIL_IN_SCARLET_NL':
+                    avail_combobox = ttk.Combobox(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                  width=new_width)
+                    avail_combobox['values'] = ['Yes', 'No']
+                    avail_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(avail_combobox)
+
+                else:
+                    entry = tk.Entry(left_frame, textvariable=entry_vars[col_without_asterisk], width=new_width)
+                    entry.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(entry)
+
+                if col_without_asterisk == 'allocation':
+                    nonlocal allocation_combobox
+                    allocation_combobox = ttk.Combobox(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                       width=new_width)
+                    allocation_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(allocation_combobox)
+                    update_allocation_options(selected_model)
+
+                elif col_without_asterisk == 'NETWORK_NAME':
+                    network_name_combobox = ttk.Combobox(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                         width=new_width)
+                    network_name_combobox['values'] = sorted(self.data['NETWORK_NAME'].dropna().unique().tolist())
+                    network_name_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(network_name_combobox)
+                    network_name_combobox.set(network_name)
+                    network_name_combobox.bind("<<ComboboxSelected>>", lambda e: update_channels_listbox())
+
+                elif col_without_asterisk == 'CT_AUTORENEW':
+                    ct_autorenew_combobox = ttk.Combobox(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                         width=new_width)
+                    ct_autorenew_combobox['values'] = ['Yes', 'No']
+                    ct_autorenew_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(ct_autorenew_combobox)
+
+                elif col_without_asterisk == 'DATA_TYPE':
+                    data_type_combobox = ttk.Combobox(left_frame, textvariable=entry_vars[col_without_asterisk],
+                                                      width=new_width)
+                    data_type_combobox['values'] = ['ACTUALS', 'FORECAST', 'PLAN']
+                    data_type_combobox.grid(row=i + 2, column=1, padx=10, pady=5, sticky='w')
+                    dynamic_widgets.append(data_type_combobox)
+
+            update_allocation_options(selected_model)
+
+        submit_button = ttk.Button(left_frame, text="Save", command=lambda: submit_deal(business_model_var, entry_vars),
+                                   style='AudienceTab.TButton')
+        submit_button.grid(row=0, column=0, padx=5, pady=5, sticky='w')
+
+        add_button = ttk.Button(left_frame, text="Add Another Selection", command=lambda: add_listbox_pair(),
+                                style='AudienceTab.TButton')
+        add_button.grid(row=0, column=1, padx=5, pady=5, sticky='e')
+
+
+        right_frame = ttk.Frame(content_frame)
+        right_frame.grid(row=0, column=1, padx=10, pady=5, sticky='nsew')
+
+        dynamic_listbox_pairs = []
+        filter_var = tk.StringVar()
+
+        def load_channel_grouping_data():
+            try:
+                channel_grouping_src = self.config_data.get('channel_grouping_src', None)
+                if channel_grouping_src:
+                    return pd.read_excel(channel_grouping_src, sheet_name='Content_Channel_Grouping')
+                else:
+                    return pd.DataFrame()
+            except Exception as e:
+                print(f"Error loading channel grouping data: {e}")
+                return pd.DataFrame()
+
+        def get_channels_for_network(network_name):
+            channel_data = load_channel_grouping_data()
+            if not channel_data.empty and 'CHANNEL_NETWORK_GROUP' in channel_data.columns:
+                filtered_channels = channel_data[channel_data['CHANNEL_NETWORK_GROUP'] == network_name]
+                if not filtered_channels.empty:
+                    return sorted(filtered_channels['CHANNEL_NAME'].dropna().unique())
+            return sorted(channel_data['CHANNEL_NAME'].dropna().unique()) if not channel_data.empty else []
+
+        def update_channels_listbox():
+            channels = get_channels_for_network(entry_vars['NETWORK_NAME'].get())
+            for pair in dynamic_listbox_pairs:
+                pair[0].delete(0, tk.END)
+                for item in channels:
+                    pair[0].insert(tk.END, item)
+
+        def add_listbox_pair():
+            channels = get_channels_for_network(entry_vars['NETWORK_NAME'].get())
+
+            pair_frame = ttk.Frame(right_frame)
+            pair_frame.grid(row=len(dynamic_listbox_pairs) * 3, column=0, padx=5, pady=5, sticky='nsew')
+
+            filter_var = tk.StringVar()
+
+            filter_label = tk.Label(pair_frame, text="Channels Filtering")
+            filter_label.grid(row=0, column=1, padx=5, pady=5, sticky='w')
+
+            filter_entry = tk.Entry(pair_frame, textvariable=filter_var)
+            filter_entry.grid(row=0, column=0, padx=5, pady=5, sticky='ew')
+
+            tk.Label(pair_frame, text="Select Channels:").grid(row=1, column=0, padx=5, pady=5, sticky='w')
+            tk.Label(pair_frame, text="Select TV Packs:").grid(row=1, column=1, padx=5, pady=5, sticky='w')
+
+            new_height = int(8 * 1.15)
+            new_width = int(30 * 1.15)
+
+            channels_listbox = tk.Listbox(pair_frame, selectmode='multiple', height=new_height, width=new_width,
+                                          exportselection=False)
+            channels_listbox.grid(row=2, column=0, padx=5, pady=5, sticky='w')
+
+            packs_listbox = tk.Listbox(pair_frame, selectmode='multiple', height=new_height, width=new_width,
+                                       exportselection=False)
+            packs_listbox.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+
+            for item in channels:
+                channels_listbox.insert(tk.END, item)
+
+            packs = sorted(self.data['PROD_EN_NAME'].dropna().unique())
+            for item in packs:
+                packs_listbox.insert(tk.END, item)
+
+            dynamic_listbox_pairs.append((channels_listbox, packs_listbox))
+
+            selected_channels = set()
+            visible_channels = []
+            def update_selected_channels(event=None):
+                current_selection = [channels_listbox.get(i) for i in channels_listbox.curselection()]
+
+                for item in current_selection:
+                    selected_channels.add(item)
+
+                for item in visible_channels:
+                    if item not in current_selection:
+                        selected_channels.discard(item)
+
+            channels_listbox.bind("<<ListboxSelect>>", update_selected_channels)
+
+            def filter_channels(event=None):
+                filter_text = filter_var.get().lower()
+                visible_channels.clear()
+                channels_listbox.delete(0, tk.END)
+
+                for item in channels:
+                    if filter_text in item.lower():
+                        channels_listbox.insert(tk.END, item)
+                        visible_channels.append(item)
+
+                        if item in selected_channels:
+                            channels_listbox.select_set(channels_listbox.size() - 1)
+
+            filter_entry.bind("<KeyRelease>", filter_channels)
+
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        # paires initiales
+        add_listbox_pair()
+
+        def calculate_duration(start_date_str, end_date_str):
+            try:
+                start_date = pd.to_datetime(start_date_str, format='%d-%m-%Y', dayfirst=True)
+                end_date = pd.to_datetime(end_date_str, format='%d-%m-%Y', dayfirst=True)
+
+                duration = relativedelta(end_date, start_date).months + (relativedelta(end_date, start_date).years * 12)
+
+                if end_date.day > 1 or (end_date.day == 1 and start_date.day != 1):
+                    duration += 1
+
+                return duration
+            except Exception as e:
+                print(f"Error calculating CT_DURATION: {e}")
+                return None
+
+        def submit_deal(business_model_var, entry_vars):
+            try:
+                required_fields = ['allocation', 'NETWORK_NAME', 'CT_STARTDATE', 'CT_ENDDATE']
+
+                missing_fields = [field for field in required_fields if
+                                  field not in entry_vars or not entry_vars[field].get()]
+
+                if missing_fields:
+                    show_message("Error", f"The following required fields are missing: {', '.join(missing_fields)}",
+                                 master=self, custom=True)
+                    return
+
+                selected_model = business_model_var.get()
+                current_columns = self.model_columns.get(selected_model, [])
+
+                if 'fixed' in selected_model.lower():
+                    ct_type = 'F'
+                    variable_fix = 'fixed'
+                elif 'cps' in selected_model.lower() or 'share' in selected_model.lower():
+                    ct_type = 'V'
+                    variable_fix = 'variable'
+                elif 'free' in selected_model.lower():
+                    ct_type = 'F'
+                    variable_fix = 'free'
+                else:
+                    ct_type = ''
+                    variable_fix = ''
+
+                duration = calculate_duration(entry_vars.get('CT_STARTDATE', tk.StringVar()).get(),
+                                              entry_vars.get('CT_ENDDATE', tk.StringVar()).get())
+
+                if duration is None:
+                    show_message("Error", "Could not calculate contract duration. Please check the date format.",
+                                 master=self, custom=True)
+                    return
+
+                for channels_listbox, packs_listbox in dynamic_listbox_pairs:
+                    selected_channels = [channels_listbox.get(idx) for idx in channels_listbox.curselection()]
+                    selected_packs = [packs_listbox.get(idx) for idx in packs_listbox.curselection()]
+
+                    if not selected_channels or not selected_packs:
+                        continue
+
+                    for channel in selected_channels:
+                        for pack in selected_packs:
+                            prod_id = self.data.loc[self.data['PROD_EN_NAME'] == pack, 'PROD_ID'].values[0]
+
+                            new_row = {
+                                'NETWORK_NAME': entry_vars.get('NETWORK_NAME', tk.StringVar()).get(),
+                                'CNT_NAME_GRP': channel,
+                                'PROD_ID': prod_id,
+                                'PROD_EN_NAME': pack,
+                                'Business model': business_model_var.get(),
+                                'allocation': entry_vars.get('allocation', tk.StringVar()).get(),
+                                'CT_TYPE': ct_type,
+                                'variable/fix': variable_fix,
+                                'CT_AUTORENEW': entry_vars.get('CT_AUTORENEW', tk.StringVar()).get(),
+                                'CT_STARTDATE': entry_vars.get('CT_STARTDATE', tk.StringVar()).get(),
+                                'CT_ENDDATE': entry_vars.get('CT_ENDDATE', tk.StringVar()).get(),
+                                'DATA_TYPE': entry_vars.get('DATA_TYPE', tk.StringVar()).get(),
+                                'CT_FIXFEE_NEW': entry_vars.get('CT_FIXFEE_NEW', tk.StringVar()).get(),
+                                'CT_DURATION': duration
+                            }
+
+                            for col in current_columns:
+                                if col not in new_row:
+                                    new_row[col] = entry_vars.get(col, tk.StringVar()).get()
+
+                            if (new_row['Business model'].lower() == 'fixed fee' and
+                                    new_row['allocation'].lower() == 'provider level'):
+                                handler = FixedFeeProviderLevelHandler(new_row)
+                                handler.add_additional_fields()
+                            if (new_row['Business model'].lower() == 'fixed fee' and
+                                    new_row['allocation'].lower() == 'channel group level'):
+                                handler = FixedFeeChannelGroupLevelHandler(new_row)
+                                handler.add_additional_fields()
+                            if new_row['Business model'].lower() == 'free':
+                                handler = FreeLevelHandler(new_row)
+                                handler.add_additional_fields()
+                            if new_row['Business model'].lower() == 'fixed fee + index':
+                                handler = FixedFeeIndexLevelHandler(new_row)
+                                handler.add_additional_fields()
+                            if new_row['Business model'].lower() == 'fixed fee cogs':
+                                handler = FixedFeeCogsLevelHandler(new_row)
+                                handler.add_additional_fields()
+                            if new_row['Business model'].lower() == 'cps over mg subs':
+                                handler = CpsOverMgSubsHandler(new_row)
+                                handler.add_additional_fields()
+                            if new_row['Business model'].lower() == 'cps over mg subs + index':
+                                handler = CpsOverMgSubsIndexHandler(new_row)
+                                handler.add_additional_fields()
+
+                            self.generate_template(new_row)
+
+                self.close_new_deal_popup(new_deal_popup)
+                self.display_metadata(self.network_name_var.get(), self.cnt_name_grp_var.get(),
+                                      self.business_model_var.get())
+
+            except KeyError as e:
+                show_message("Error", f"Missing required field: {str(e)}", master=self, custom=True)
+
+        update_fields_based_on_business_model()
+
+    def close_new_deal_popup(self, popup):
+        self.new_deal_popup_open = False
+        popup.destroy()
+    ######## refefefef
+
+    def open_update_deal_popup(self):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            show_message("Warning", "Please select at least one deal to update", master=self, custom=True)
+            return
+
+        self.update_deal_popup = tk.Toplevel(self)
+        self.update_deal_popup.title("Update Deal")
+        self.update_deal_popup.geometry("400x600")
+
+        self.current_update_index = 0
+        self.items_to_update = selected_items
+
+        self.update_deal_entries = {col: tk.StringVar() for col in self.tree["columns"]}
+
+        for i, col in enumerate(self.tree["columns"]):
+            tk.Label(self.update_deal_popup, text=col).grid(row=i, column=0, padx=10, pady=5, sticky='e')
+            entry = tk.Entry(self.update_deal_popup, textvariable=self.update_deal_entries[col])
+            entry.grid(row=i, column=1, padx=10, pady=5, sticky='w')
+            if col in ['NETWORK_NAME', 'CNT_NAME_GRP']:
+                entry.config(state='readonly')
+
+        def submit_update():
+            new_values = {col: self.update_deal_entries[col].get() for col in self.tree["columns"]}
+            self.update_deal_row(self.current_update_index, new_values)
+            self.current_update_index += 1
+            if self.current_update_index < len(self.items_to_update):
+                self.populate_update_deal_entries()
+            else:
+                self.update_deal_popup.destroy()
+
+        def cancel_update():
+            self.current_update_index += 1
+            if self.current_update_index < len(self.items_to_update):
+                self.populate_update_deal_entries()
+            else:
+                self.update_deal_popup.destroy()
+
+        submit_button = ttk.Button(self.update_deal_popup, text="Save", command=submit_update)
+        submit_button.grid(row=len(self.tree["columns"]), column=0, padx=10, pady=20, sticky='e')
+
+        cancel_button = ttk.Button(self.update_deal_popup, text="Cancel", command=cancel_update)
+        cancel_button.grid(row=len(self.tree["columns"]), column=1, padx=10, pady=20, sticky='w')
+
+        self.populate_update_deal_entries()
+
+    def populate_update_deal_entries(self):
+        item_id = self.items_to_update[self.current_update_index]
+        values = self.tree.item(item_id, "values")
+        for col, value in zip(self.tree["columns"], values):
+            self.update_deal_entries[col].set(value)
+
+    def update_deal_row(self, index, new_values):
+        item_id = self.items_to_update[index]
+        item_idx = self.tree.index(item_id)
+
+        for col, val in new_values.items():
+            self.data.at[item_idx, col] = val
+
+        self.save_updated_data()
+        self.data.sort_values(by='CT_BOOK_YEAR', ascending=False, inplace=True)
+        self.display_metadata(self.network_name_var.get(), self.cnt_name_grp_var.get(), self.business_model_var.get())
+
+    def add_new_deal_row(self, new_row):
+        self.data = pd.concat([self.data, pd.DataFrame([new_row])], ignore_index=True)
+        self.save_updated_data()
+        self.data.sort_values(by='CT_BOOK_YEAR', ascending=False, inplace=True)
+        self.display_metadata(self.network_name_var.get(), self.cnt_name_grp_var.get(), self.business_model_var.get())
+
+    def save_updated_data(self):
+        with pd.ExcelWriter(self.file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+            self.data.to_excel(writer, sheet_name='all contract cost file', index=False)
+
+    def show_tooltip(self, event, text):
+        self.tooltip = utils.tooltip_show(event, text, self)
+
+    def hide_tooltip(self):
+        utils.tooltip_hide(self.tooltip)
+
+    def clear_fields(self):
+        self.network_name_var.set('')
+        self.cnt_name_grp_var.set('')
+        self.business_model_var.set('')
+        self.allocation_var.set('')
+
+        self.tree.delete(*self.tree.get_children())
+        self.populate_dropdowns()
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    config_manager = ConfigManager()
+    tab = CostTab(root, config_manager=config_manager)
+    tab.pack(expand=1, fill='both')
+    root.mainloop()
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/cps_over_mg_subs_index.py
+class CpsOverMgSubsIndexHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        # Index
+        self.new_row['CT_INDEX'] = self.calculate_minimum_garanti()
+        # Minimum garanti
+        self.new_row['CT_MG'] = self.calculate_minimum_garanti()
+        # variable fees
+        self.new_row['CT_VARFEE'] = self.calculate_variable_fee()
+        self.new_row['CT_VARFEE_NEW'] = self.calculate_variable_fee()
+        # audience
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        #Subs here ??
+        self.new_row['CT_MIN_SUBS'] = self.calculate_minimum_subs()
+        # CAPEX / COGS
+        self.new_row['CAPEX'] = self.calculate_capex()
+        self.new_row['COGS'] = self.calculate_cogs()
+
+
+    def calculate_year(self):
+        pass
+
+    def calculate_minimum_garanti(self):
+        pass
+
+    def calculate_variable_fee(self):
+        pass
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_cogs(self):
+        pass
+
+    def calculate_minimum_subs(self):
+        pass
+
+
+
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/cps_over_mg_subs.py
+class CpsOverMgSubsHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        # Minimum garanti
+        self.new_row['CT_MG'] = self.calculate_minimum_garanti()
+        # variable fees
+        self.new_row['CT_VARFEE'] = self.calculate_variable_fee()
+        # audience
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        #Subs here ??
+        
+        self.new_row['CT_MIN_SUBS'] = self.calculate_minimum_subs()
+        # CAPEX / COGS
+        self.new_row['CAPEX'] = self.calculate_capex()
+        self.new_row['COGS'] = self.calculate_cogs()
+
+
+    def calculate_year(self):
+        pass
+
+    def calculate_minimum_garanti(self):
+        pass
+
+    def calculate_variable_fee(self):
+        pass
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_cogs(self):
+        pass
+
+    def calculate_minimum_subs(self):
+        pass
+
+
+
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/__init__.py
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/free.py
+class FreeLevelHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+
+
+    def calculate_year(self):
+        pass
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/fixedFee_index.py
+class FixedFeeIndexLevelHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        self.new_row['CT_FIXFEE'] = self.retrieve_previous_fixfee()
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        self.new_row['CAPEX'] = self.calculate_capex()
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def retrieve_previous_fixfee(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_year(self):
+        pass
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/fixedFee_providerLevel.py
+class FixedFeeProviderLevelHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        self.new_row['CT_FIXFEE'] = self.retrieve_previous_fixfee()
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        self.new_row['CAPEX'] = self.calculate_capex()
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def retrieve_previous_fixfee(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_year(self):
+        pass
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/fixedFee_channelGroupLevel.py
+class FixedFeeChannelGroupLevelHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        self.new_row['CT_FIXFEE'] = self.retrieve_previous_fixfee()
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        self.new_row['CAPEX'] = self.calculate_capex()
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def retrieve_previous_fixfee(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_year(self):
+        pass
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/parser_audience.py
+import logging
+import os
+
+import pandas as pd
+import sys
+import json
+
+from openpyxl.reader.excel import load_workbook
+from openpyxl.styles import PatternFill, Font, Side, Border
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
+
+# from utils import show_message
+
+logging.basicConfig(level=logging.INFO)
+
+def load_excel(file_path):
+    return pd.read_excel(file_path)
+
+
+def calculate_forecast(df, references_month, references_year, target_start_year, target_end_year, specifics_enabled,
+                       prod_nums, bus_chanl_nums):
+    print("Filtering reference data based on provided month and year...")
+    reference_data_current_year = df[
+        (df['PERIOD_YEAR'] == references_year) &
+        (df['PERIOD_MONTH'] <= references_month)
+        ]
+    reference_data_previous_year = df[
+        (df['PERIOD_YEAR'] == (references_year - 1)) &
+        (df['PERIOD_MONTH'] > references_month)
+        ]
+    reference_data = pd.concat([reference_data_previous_year, reference_data_current_year])
+    print(f"Reference data after initial filter: {len(reference_data)} rows")
+
+    if specifics_enabled:
+        print("Filtering reference data based on specifics...")
+        print(f"Selected PROD_NUMs: {prod_nums}")
+        print(f"Selected BUS_CHANL_NUMs: {bus_chanl_nums}")
+        unique_prod_nums = reference_data['PROD_NUM'].astype(str).unique()
+        unique_bus_chanl_nums = reference_data['BUS_CHANL_NUM'].astype(str).unique()
+        print(f"Unique PROD_NUMs in reference data: {unique_prod_nums}")
+        print(f"Unique BUS_CHANL_NUMs in reference data: {unique_bus_chanl_nums}")
+
+        if not prod_nums:
+            prod_nums = unique_prod_nums.tolist()
+        if not bus_chanl_nums:
+            bus_chanl_nums = unique_bus_chanl_nums.tolist()
+
+        reference_data = reference_data[
+            (reference_data['PROD_NUM'].astype(str).isin(prod_nums)) &
+            (reference_data['BUS_CHANL_NUM'].astype(str).isin(bus_chanl_nums))
+            ]
+        print(f"Reference data after specifics filter: {len(reference_data)} rows")
+
+    print("Checking for duplicates...")
+    duplicates = reference_data[
+        reference_data.duplicated(subset=['PERIOD_YEAR', 'PERIOD_MONTH', 'PROD_NUM', 'BUS_CHANL_NUM'], keep=False)
+    ]
+    if not duplicates.empty:
+        print("Duplicates found, generating error message...")
+        duplicate_info = duplicates[['PERIOD_YEAR', 'PERIOD_MONTH', 'PROD_NUM', 'BUS_CHANL_NUM']].drop_duplicates()
+        duplicate_details = "\n".join([
+            f"Year: {row.PERIOD_YEAR}, Month: {row.PERIOD_MONTH}, Prod Num: {row.PROD_NUM}, Bus Chanl Num: {row.BUS_CHANL_NUM}"
+            for idx, row in duplicate_info.iterrows()
+        ])
+
+        duplicate_rows = duplicates.index.tolist()
+        duplicate_rows_info = "\n".join([f"Row Number: {row_num}" for row_num in duplicate_rows])
+
+        error_message = f"Duplicate rows found in the reference file based on 'PERIOD_YEAR', 'PERIOD_MONTH', 'PROD_NUM', 'BUS_CHANL_NUM':\n{duplicate_details}\n\nDuplicate Rows:\n{duplicate_rows_info}"
+        # show_message("Error", error_message, type='error')
+        return pd.DataFrame(), pd.DataFrame()
+
+    print("Calculating reference eop volumes...")
+    eop_2024 = reference_data.groupby(['PERIOD_YEAR', 'PERIOD_MONTH', 'PROD_NUM', 'BUS_CHANL_NUM'])[
+        'sum_eop_vol_2024'].sum()
+    eop_2025 = reference_data.groupby(['PERIOD_YEAR', 'PERIOD_MONTH', 'PROD_NUM', 'BUS_CHANL_NUM'])[
+        'sum_eop_vol_2025'].sum()
+
+    forecast_data = []
+
+    print("Starting forecast calculation...")
+    for year in range(target_start_year, target_end_year + 1):
+        for month in range(1, 13):
+            if month <= references_month:
+                ref_period_year = references_year
+                ref_period_month = month
+            else:
+                ref_period_year = references_year - 1
+                ref_period_month = month
+
+            ref_data = reference_data[
+                (reference_data['PERIOD_YEAR'] == ref_period_year) &
+                (reference_data['PERIOD_MONTH'] == ref_period_month)
+                ]
+
+            for index, row in ref_data.iterrows():
+                prod_num = row['PROD_NUM']
+                bus_chanl_num = row['BUS_CHANL_NUM']
+
+                eop_2024_val = eop_2024.get((ref_period_year, ref_period_month, prod_num, bus_chanl_num), float('nan'))
+                eop_2025_val = eop_2025.get((ref_period_year, ref_period_month, prod_num, bus_chanl_num), float('nan'))
+
+                forecast_row = row.copy()
+                if not pd.isna(eop_2024_val) and eop_2024_val != 0 and not pd.isna(eop_2025_val):
+                    for col in ['LIVE_TV_VIEWING_MINUTES', 'PVR_VIEWING_MINUTES', 'CUTV_VIEWING_MINUTES',
+                                'OTT_VIEWING_MINUTES', 'VOD_VIEWING_MINUTES']:
+                        forecasted_viewing = row[col] * eop_2025_val / eop_2024_val
+                        forecast_row[col] = forecasted_viewing
+                forecast_row['PERIOD_YEAR'] = year
+                forecast_row['PERIOD_MONTH'] = month
+                forecast_data.append(forecast_row.to_dict())
+
+    print(f"Forecast calculation completed. Total forecast rows: {len(forecast_data)}")
+    return pd.DataFrame(forecast_data), reference_data
+
+
+
+def copy_sheet(source_sheet, target_sheet):
+    for row in source_sheet.iter_rows():
+        for cell in row:
+            target_sheet.cell(row=cell.row, column=cell.col_idx, value=cell.value)
+
+    for row_dim in source_sheet.row_dimensions.values():
+        target_sheet.row_dimensions[row_dim.index].height = row_dim.height
+
+    for col_dim in source_sheet.column_dimensions.values():
+        target_sheet.column_dimensions[col_dim.index].width = col_dim.width
+
+    for merged_cell_range in source_sheet.merged_cells.ranges:
+        target_sheet.merge_cells(str(merged_cell_range))
+
+def check_file_open(file_path):
+    if not os.path.isfile(file_path):
+        return False
+    try:
+        os.rename(file_path, file_path)
+    except OSError:
+        return True
+    return False
+
+def style_worksheet(ws):
+    ws.auto_filter.ref = ws.dimensions
+
+    header_fill = PatternFill(start_color="4ea72e", end_color="4ea72e", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    alternating_fill = [PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"),
+                        PatternFill(start_color="daf2d0", end_color="daf2d0", fill_type="solid")]
+    border = Border(top=Side(style="thin", color="4ea72e"), bottom=Side(style="thin", color="4ea72e"))
+
+    max_row = ws.max_row
+    max_col = ws.max_column
+
+    for row in ws.iter_rows(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+        for cell in row:
+            cell.border = border
+            if cell.row == 1:
+                cell.fill = header_fill
+                cell.font = header_font
+            else:
+                cell.fill = alternating_fill[(cell.row - 2) % 2]
+
+    for col in ws.iter_cols(min_row=1, max_row=max_row, min_col=1, max_col=max_col):
+        max_length = 0
+        column_letter = get_column_letter(col[0].column)
+        for cell in col:
+            if cell.value is not None:
+                max_length = max(max_length, len(str(cell.value)))
+        adjusted_width = max_length + 2 if max_length > 0 else 8
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+def save_dataframe_with_formatting(forecast_df, reference_df, output_path, original_file, references_year, prod_nums, bus_chanl_nums):
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    output_filepath = os.path.join(output_path, "forecast_audience.xlsx")
+
+    if check_file_open(output_filepath):
+        logging.error(f"The file {output_filepath} is open. Please close the file and try again.")
+        return
+
+    try:
+        logging.info(f"Loading original workbook from {original_file}")
+        workbook = load_workbook(original_file)
+        reference_sheet = workbook.active
+
+        forecast_sheet = workbook.create_sheet(title="Working")
+        new_reference_sheet = workbook.create_sheet(title="Reference")
+
+        logging.info("Writing data to the Working sheet")
+        for r_idx, row in enumerate(dataframe_to_rows(forecast_df, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                forecast_sheet.cell(row=r_idx, column=c_idx, value=value)
+
+        logging.info("Writing data to the Reference sheet")
+        for r_idx, row in enumerate(dataframe_to_rows(reference_df, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                new_reference_sheet.cell(row=r_idx, column=c_idx, value=value)
+
+        forecast_sheet.freeze_panes = 'A2'
+        new_reference_sheet.freeze_panes = 'A2'
+
+        logging.info("Adjusting column widths and applying styles")
+        for sheet in [forecast_sheet, new_reference_sheet]:
+            style_worksheet(sheet)
+
+        workbook.remove(reference_sheet)
+        new_reference_sheet.title = "Reference"
+
+        if 'Sheet1' in workbook.sheetnames:
+            std = workbook['Sheet1']
+            workbook.remove(std)
+
+        set_forecast_sheet_as_active(workbook)
+
+        logging.info(f"Saving workbook to {output_filepath}")
+        workbook.save(output_filepath)
+        logging.info(f"Data saved to {output_filepath}")
+
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+        # show_message("Error", f"An error occurred: {e}", type='error')
+
+
+def set_forecast_sheet_as_active(workbook):
+    if "Working" in workbook.sheetnames:
+        workbook.active = workbook.sheetnames.index("Working")
+
+
+def main(args):
+    file_path = args.get('file_path')
+    if not file_path or not os.path.exists(file_path):
+        logging.error(f"The specified file does not exist: {file_path}")
+        return
+
+    references_month = int(args.get('references_month', 6))
+    references_year = int(args.get('references_year', 2024))
+    target_start_year = int(args.get('target_start_year', 2025))
+    target_end_year = int(args.get('target_end_year', 2025))
+    specifics_enabled = args.get('specifics_enabled', False)
+    prod_nums = args.get('prod_nums', [])
+    bus_chanl_nums = args.get('bus_chanl_nums', [])
+    output_dir = args.get('output_dir')
+    if not output_dir or not os.path.exists(output_dir):
+        logging.error(f"The specified output directory does not exist: {output_dir}")
+        return
+
+    df = load_excel(file_path)
+
+    forecast_df, reference_df = calculate_forecast(df, references_month, references_year, target_start_year, target_end_year, specifics_enabled, prod_nums, bus_chanl_nums)
+    if not forecast_df.empty:
+        save_dataframe_with_formatting(forecast_df, reference_df, output_dir, file_path, references_year, prod_nums, bus_chanl_nums)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        args = json.loads(sys.argv[1])
+    else:
+        args = {}
+    main(args)
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/parser/fixedFee_cogs.py
+class FixedFeeCogsLevelHandler:
+    def __init__(self, new_row):
+        self.new_row = new_row
+
+    def add_additional_fields(self):
+        self.new_row['YEAR'] = self.calculate_year()
+        self.new_row['CT_FIXFEE'] = self.retrieve_previous_fixfee()
+        self.new_row['CNT_NAME_PRD_MINS'] = self.calculate_cnt_name_prd_mins()
+        self.new_row['CNT_NAME_PRD_MINS_TOT'] = self.calculate_cnt_name_prd_mins_tot()
+        self.new_row['AUDSHARE_ALLOC_KEY'] = self.generate_audshare_alloc_key()
+        self.new_row['TOTAL_COST_NETWORK'] = self.calculate_total_cost_network()
+        self.new_row['FIX_YEARLY_COST_ALLOC'] = self.calculate_fix_yearly_cost_alloc()
+        self.new_row['CAPEX'] = self.calculate_capex()
+        self.new_row['COGS'] = self.calculate_cogs()
+
+    def calculate_cnt_name_prd_mins(self):
+        pass
+
+    def calculate_cnt_name_prd_mins_tot(self):
+        pass
+
+    def generate_audshare_alloc_key(self):
+        pass
+
+    def calculate_total_cost_network(self):
+        pass
+
+    def calculate_fix_yearly_cost_alloc(self):
+        pass
+
+    def retrieve_previous_fixfee(self):
+        pass
+
+    def calculate_capex(self):
+        pass
+
+    def calculate_cogs(self):
+        pass
+
+    def calculate_year(self):
+        pass
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/utilities/config_manager.py
+import json
+import os
+import sys
+from tkinter import ttk, Toplevel, font
+import win32com.client as win32
+
+import pandas as pd
+
+from utilities.utils import center_window, show_message, set_window_icon
+
+
+class ViewDealsLoaderPopup(Toplevel):
+    def __init__(self, master, config_manager):
+        super().__init__(master)
+        self.config_manager = config_manager
+        self.config_data = self.config_manager.get_config()
+        self.cost_dest = self.config_data.get("cost_dest", "")
+
+        if not self.cost_dest:
+            print("Debug: 'cost_dest' is not set or is empty.")
+            show_message(
+                "Error",
+                "The 'cost_dest' directory is not set or is invalid.",
+                type="error",
+                master=self,
+            )
+            self.destroy()
+            return
+
+        print(f"Debug: 'cost_dest' is set to: {self.cost_dest}")
+
+        self.working_contracts_file = os.path.join(
+            self.cost_dest, "working_contracts.xlsx"
+        )
+
+        if not os.path.exists(self.working_contracts_file):
+            print(
+                f"Debug: 'working_contracts.xlsx' file does not exist at: {self.working_contracts_file}"
+            )
+            show_message(
+                "Error",
+                f"'working_contracts.xlsx' file not found in {self.cost_dest}",
+                type="error",
+                master=self,
+            )
+            self.destroy()
+            return
+
+        self.init_ui()
+        center_window(self, master, 500, 400)
+        self.transient(master)
+        self.grab_set()
+        master.wait_window(self)
+
+    def init_ui(self):
+        self.title("Contract Templates")
+        set_window_icon(self)
+        self.configure(bg="#f0f0f0")
+
+        sheets = self.get_sheets()
+
+        self.main_frame = ttk.Frame(self, style="Main.TFrame")
+        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.tree = ttk.Treeview(
+            self.main_frame, columns=("Business Model", "Path"), show="headings"
+        )
+        self.tree.heading("Business Model", text="Business Model")
+        self.tree.heading("Path", text="Path")
+
+        self.tree.column("Business Model", width=250, stretch=True)
+        self.tree.column("Path", width=200, stretch=True)
+
+        bold_font = font.Font(weight="bold")
+
+        for sheet_name in sheets:
+            self.tree.insert(
+                "", "end", values=(sheet_name, self.working_contracts_file)
+            )
+
+            self.tree.tag_configure("bold", font=bold_font)
+            self.tree.item(self.tree.get_children()[-1], tags=("bold",))
+        self.tree.pack(fill="both", expand=True)
+
+        self.tree.bind("<Double-1>", self.open_template)
+
+        scrollbar = ttk.Scrollbar(
+            self.main_frame, orient="vertical", command=self.tree.yview
+        )
+        self.tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+    def get_sheets(self):
+        """Retrieve all sheet names from the centralized working_contracts.xlsx file."""
+        print(f"Debug: Retrieving sheets from {self.working_contracts_file}")
+        xl = pd.ExcelFile(self.working_contracts_file)
+        return xl.sheet_names
+
+    def open_template(self, event):
+        selected_item = self.tree.selection()
+        if selected_item:
+            sheet_name = self.tree.item(selected_item, "values")[0]
+            excel = win32.Dispatch("Excel.Application")
+            workbook = excel.Workbooks.Open(self.working_contracts_file)
+            excel.Visible = True
+
+            try:
+                sheet = workbook.Sheets(sheet_name)
+                sheet.Activate()
+            except Exception as e:
+                show_message(
+                    "Error",
+                    f"Could not find sheet '{sheet_name}'. Error: {e}",
+                    master=self.master,
+                    custom=True,
+                )
+
+            excel.WindowState = win32.constants.xlMaximized
+            excel.Application.ActiveWindow.Activate()
+
+
+def default_config():
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    output_dir = os.path.join(project_root, "outputs")
+
+    print(f"Debug: Setting default 'cost_dest' to: {output_dir}")
+    return {
+        "audience_src": "",
+        "audience_dest": "",
+        "cost_src": "",
+        "cost_dest": output_dir,
+        "product_grouping_src": "",
+        "channel_grouping_src": "",
+    }
+
+
+class ConfigManager:
+    def __init__(self, config_file=None):
+        if config_file is None:
+            if getattr(sys, "frozen", False):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+            self.config_file = os.path.join(
+                base_dir, "..", "..", ".config", "config.json"
+            )
+        else:
+            self.config_file = config_file
+        self.config_data = {}
+
+    def load_config(self, file_path=None):
+        if file_path is None:
+            file_path = self.config_file
+
+        try:
+            with open(file_path, "r") as file:
+                content = file.read()
+                if content.strip():
+                    self.config_data = json.loads(content)
+                    print(f"Debug: Loaded config from {file_path}.")
+                else:
+                    raise ValueError("Empty configuration file")
+        except (json.JSONDecodeError, ValueError, FileNotFoundError) as e:
+            print(
+                f"Debug: Failed to load config from {file_path}. Using default config."
+            )
+            self.config_data = default_config()
+            self.save_config()
+
+        print(
+            f"Debug: Current 'cost_dest' in config: {self.config_data.get('cost_dest', '')}"
+        )
+        return self.config_data
+
+    def save_config(self):
+        """Write the configuration data to disk."""
+        os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+        with open(self.config_file, "w") as file:
+            json.dump(self.config_data, file, indent=4)
+        print(f"Debug: Configuration saved to {self.config_file}")
+
+    def update_config(self, key, value):
+        if isinstance(value, str) and "\\" in value:
+            value = value.replace("\\", "\\\\")
+        self.config_data[key] = value
+        self.save_config()
+
+    def get_config(self):
+        return self.config_data
+
+
+class ConfigLoaderPopup(Toplevel):
+    def __init__(self, master, config_manager, callback, audience_tab):
+        super().__init__(master)
+        self.config_manager = config_manager
+        self.callback = callback
+        self.audience_tab = audience_tab
+        self.config_data = self.config_manager.get_config()
+        self.loaded_files = set()
+        self.selected_files = set()
+        self.init_ui()
+        center_window(self, master, 800, 400)
+        self.transient(master)
+        self.grab_set()
+        master.wait_window(self)
+
+    def init_ui(self):
+        set_window_icon(self)
+        self.configure(bg="#f0f0f0")
+
+        files_to_load = {k: v for k, v in self.config_data.items() if os.path.isfile(v)}
+
+        data = []
+        for key, path in files_to_load.items():
+            file_name = os.path.basename(path)
+            data.append([key, file_name, path])
+
+        df = pd.DataFrame(data, columns=["Config Variable", "File Name", "Path"])
+
+        self.main_frame = ttk.Frame(self, style="Main.TFrame")
+        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.table_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
+        self.table_frame.grid(row=0, column=0, sticky="nsew")
+
+        self.tree = ttk.Treeview(
+            self.table_frame,
+            columns=("Config Variable", "File Name", "Path"),
+            show="headings",
+            selectmode="extended",
+        )
+        self.tree.heading("Config Variable", text="Config Variable")
+        self.tree.heading("File Name", text="File Name")
+        self.tree.heading("Path", text="Path")
+
+        self.tree.column("Config Variable", width=150, stretch=True)
+        self.tree.column("File Name", width=150, stretch=True)
+        self.tree.column("Path", width=300, stretch=True)
+
+        for idx, row in df.iterrows():
+            self.tree.insert(
+                "",
+                "end",
+                values=(row["Config Variable"], row["File Name"], row["Path"]),
+            )
+
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(
+            self.table_frame, orient="vertical", command=self.tree.yview
+        )
+        self.tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="left", fill="y")
+
+        self.button_frame = ttk.Frame(self.main_frame, style="Main.TFrame")
+        self.button_frame.grid(row=1, column=0, pady=10, sticky="ew")
+
+        self.button_frame.columnconfigure(0, weight=1)
+        self.button_frame.columnconfigure(1, weight=1)
+
+        load_all_button = ttk.Button(
+            self.button_frame, text="Load All", command=self.load_all_files
+        )
+        load_all_button.grid(row=0, column=0, padx=2, sticky="ew")
+
+        next_button = ttk.Button(
+            self.button_frame, text="Load Selection", command=self.load_selected_files
+        )
+        next_button.grid(row=0, column=1, padx=2, sticky="ew")
+
+        help_label = ttk.Label(
+            self.main_frame,
+            text="*Sélectionnez plusieurs fichiers à l'aide de la touche Ctrl ou Alt",
+            font=("Helvetica", 10, "italic"),
+        )
+        help_label.grid(row=2, column=0, pady=0, padx=2, sticky="w")
+
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.rowconfigure(0, weight=1)
+
+    def load_selected_files(self):
+        selected_items = self.tree.selection()
+        files_to_load = []
+        audience_loaded = False
+        grouping_loaded = False
+
+        for item in selected_items:
+            values = self.tree.item(item, "values")
+            key, path = values[0], values[2]
+            if path not in self.selected_files:
+                self.selected_files.add(path)
+                if path not in self.loaded_files:
+                    self.loaded_files.add(path)
+                    files_to_load.append((key, path))
+
+                    # Check if audience_src or groupings are selected
+                    if key == "audience_src":
+                        audience_loaded = True
+                    elif key in ["product_grouping_src", "channel_grouping_src"]:
+                        grouping_loaded = True
+
+        if files_to_load:
+            for key, path in files_to_load:
+                try:
+                    if os.path.exists(path):
+                        self.callback(key, path)
+                        show_message(
+                            "File Loading...",
+                            f"Successfully loaded {key} from {path}",
+                            master=self.master,
+                            custom=True,
+                        )
+                    else:
+                        show_message(
+                            "Error",
+                            f"File not found: {path}",
+                            type="error",
+                            master=self.master,
+                            custom=True,
+                        )
+                except Exception as e:
+                    show_message(
+                        "Error",
+                        f"Failed to load {key}: {e}",
+                        type="error",
+                        master=self.master,
+                        custom=True,
+                    )
+
+        # Check if audience and a grouping file are both loaded, and enable specifics if so
+        if audience_loaded and grouping_loaded:
+            self.audience_tab.enable_specifics()
+
+        self.selected_files.clear()
+        self.destroy()
+
+    def load_all_files(self):
+        for item in self.tree.get_children():
+            self.tree.selection_add(item)
+        self.load_selected_files()
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/utilities/__init__.py
+
+
+# File: /Users/adta/Desktop/Projet-SGBD/src/utilities/utils.py
+import ctypes
+import os
+import sys
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+
+import pandas as pd
+
+
+def set_window_icon(window, icon_name='favicon.ico'):
+    """Sets the icon for the given tkinter window.
+
+    Args:
+        window: The tkinter window (Tk or Toplevel) where the icon will be set.
+        icon_name: The name of the icon file (default is 'favicon.ico').
+    """
+    icon_path = os.path.join(os.path.dirname(__file__), '..', 'static', icon_name)
+
+    if os.path.exists(icon_path):
+        window.iconbitmap(icon_path)
+    else:
+        print(f"Error: Icon file not found: {icon_path}")
+
+def get_base_dir(main_file_path):
+    """Determine the base directory for the application."""
+    if getattr(sys, 'frozen', False):
+        base_dir = sys._MEIPASS
+        print(f"Application is frozen. _MEIPASS directory is {base_dir}")
+    else:
+        base_dir = os.path.dirname(os.path.abspath(main_file_path))
+        print(f"Application is not frozen. Base directory is {base_dir}")
+
+    return base_dir
+
+def open_file_and_update_config(config_manager, config_key, title="Select a file", filetypes=None):
+    """
+    Opens a file dialog to select a file and updates the configuration with the selected file path.
+
+    Args:
+        config_manager (ConfigManager): The configuration manager to update.
+        config_key (str): The key in the configuration to update with the selected file path.
+        title (str): The title of the file dialog window.
+        filetypes (list): A list of tuples specifying the file types (e.g., [("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]).
+
+    Returns:
+        str: The selected file path, or None if no file was selected.
+    """
+    filetypes = [("Excel files", "*.xlsx *.xls")]
+    filepath = filedialog.askopenfilename(title=title, filetypes=filetypes)
+    if filepath:
+        config_manager.update_config(config_key, filepath)
+        try:
+            df = pd.read_excel(filepath)
+            return df
+        except Exception as e:
+            show_message("Error", f"Failed to load Excel file: {e}", type="error")
+    return None
+
+def center_window(window, master=None, width=420, height=650):
+    """
+    Centers the window on the screen based on the master's size.
+
+    Args:
+        window (tk.Toplevel or tk.Tk): The window to be centered.
+        master (tk.Tk, optional): The master window.
+        width (int): The width of the window to be centered.
+        height (int): The height of the window to be centered.
+    """
+    if master is None:
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+    else:
+        screen_width = master.winfo_screenwidth()
+        screen_height = master.winfo_screenheight()
+
+    position_top = int(screen_height / 2 - height / 2)
+    position_right = int(screen_width / 2 - width / 2)
+    window.geometry(f"{width}x{height}+{position_right}+{position_top}")
+
+
+def create_styled_button(parent, text, command=None, width=10):
+    """
+    Creates a styled button with a specific text and command.
+
+    Args:
+        parent (tk.Widget): The parent widget for the button.
+        text (str): The text to display on the button.
+        command (callable, optional): The function to call when the button is clicked.
+        width (int, optional): The width of the button.
+
+    Returns:
+        ttk.Button: The created styled button.
+    """
+    return ttk.Button(parent, text=text, command=command, style='AudienceTab.TButton', width=width)
+
+
+def create_menu(window, menu_items):
+    """
+    Creates a menu in the window with given menu items.
+
+    Args:
+        window (tk.Tk): The window to attach the menu to.
+        menu_items (list): A list of dictionaries, each containing 'label' and 'command' keys.
+    """
+    menubar = tk.Menu(window)
+    window.config(menu=menubar)
+    for item in menu_items:
+        submenu = item.get("submenu")
+        if submenu:
+            cascade_menu = tk.Menu(menubar, tearoff=0, background='SystemButtonFace', fg='black')
+            for subitem in submenu:
+                cascade_menu.add_command(label=subitem["label"], command=subitem["command"])
+            menubar.add_cascade(label=item["label"], menu=cascade_menu)
+        else:
+            menubar.add_command(label=item["label"], command=item["command"])
+
+
+def select_file(callback, filetypes):
+    """
+    Handles selecting a file and passes the selected file path to the callback function.
+
+    Args:
+        callback (callable): The function to call with the selected file path.
+        filetypes (list): A list of tuples specifying the allowed file types.
+    """
+    file_selected = filedialog.askopenfilename(filetypes=filetypes)
+    if file_selected:
+        callback(file_selected)
+
+popup_windows = []
+
+def show_message(title, message, type='info', master=None, custom=False):
+    """
+    Displays a message box of specified type. Optionally uses a custom dialog.
+
+    Args:
+        title (str): The title of the message box.
+        message (str): The message to display.
+        type (str): The type of message box ('info' or 'error').
+        master (tk.Widget, optional): The parent widget if using a custom dialog.
+        custom (bool): Whether to use the custom dialog.
+    """
+    if custom and master is not None:
+        show_custom_message(master, title, message, type)
+    elif type == 'info':
+        tk.messagebox.showinfo(title, message)
+    elif type == 'error':
+        tk.messagebox.showerror(title, message)
+
+def show_custom_message(master, title, message, type='info'):
+    """
+    Displays a custom message box with selectable text that adapts its height based on content length.
+    Scrolls appear after 20 lines.
+
+    Args:
+        master (tk.Widget): The parent widget.
+        title (str): The title of the message box.
+        message (str): The message to display.
+        type (str): The type of message box ('info' or 'error').
+    """
+    global popup_windows
+
+    top = tk.Toplevel(master)
+    top.title(title)
+    set_window_icon(top)
+
+    screen_width = master.winfo_screenwidth()
+    screen_height = master.winfo_screenheight()
+    window_width = min(350, max(300, len(message) * 7))
+
+    characters_per_line = window_width // 7
+    estimated_lines = len(message) // characters_per_line + (1 if len(message) % characters_per_line else 0)
+    window_height = min(150 + 18 * min(20, estimated_lines), screen_height - 100)
+
+    x_coordinate = (screen_width - window_width) // 2
+    y_coordinate = (screen_height - window_height) // 2
+    top.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
+
+    top.transient(master)
+
+    bg_color = '#dddddd' if type == 'info' else '#ffdddd'
+
+    text_frame = tk.Frame(top)
+    text_frame.pack(fill='both', expand=True)
+    text_scroll = tk.Scrollbar(text_frame)
+    text_scroll.pack(side='right', fill='y')
+    text_widget = tk.Text(text_frame, wrap='word', yscrollcommand=text_scroll.set,
+                          background=bg_color, borderwidth=0, highlightthickness=0)
+    text_widget.insert('end', message)
+    text_widget.config(state='disabled', height=min(25, estimated_lines))
+    text_widget.pack(pady=20, padx=20, fill='both', expand=True)
+    text_scroll.config(command=text_widget.yview)
+
+    def on_click(event):
+        if event.widget is not text_widget:
+            top.destroy()
+
+    def on_close(event=None):
+        top.destroy()
+        if top in popup_windows:
+            popup_windows.remove(top)
+        if popup_windows:
+            popup_windows[-1].focus_force()
+
+    top.bind("<FocusOut>", on_close)
+    top.bind("<Button-1>", on_click)
+    top.protocol("WM_DELETE_WINDOW", on_close)
+    top.focus_force()
+
+    popup_windows.append(top)
+def select_directory(entry_field):
+    """
+    Opens a directory dialog to select a folder and updates the entry field.
+
+    Args:
+        entry_field (ttk.Entry): The entry field to update with the selected directory path.
+    """
+    folder_selected = filedialog.askdirectory()
+    if folder_selected:
+        entry_field.delete(0, tk.END)
+        entry_field.insert(0, folder_selected)
+
+def clean_file_path(file_path):
+    """
+    Cleans up the file path by removing leading and trailing quotes.
+
+    Args:
+        file_path (str): The file path to clean.
+
+    Returns:
+        str: The cleaned file path.
+    """
+    return file_path.strip().strip('"')
+
+
+current_tooltip = None  # Global variable to keep track of the current tooltip
+
+def tooltip_show(event, text, master):
+    global current_tooltip
+
+    # If a tooltip is already being shown, destroy it before showing a new one
+    if current_tooltip:
+        tooltip_hide(current_tooltip)
+
+    x, y = master.winfo_pointerxy()
+    tooltip = tk.Toplevel(master)
+    tooltip.wm_overrideredirect(True)
+    tooltip.wm_geometry(f"+{x + 10}+{y + 10}")
+    label = ttk.Label(tooltip, text=text, background="grey", relief="solid", borderwidth=1, padding=5)
+    label.pack()
+
+    current_tooltip = tooltip  # Store the current tooltip reference
+    return tooltip
+
+def tooltip_hide(tooltip):
+    global current_tooltip
+
+    if tooltip and tooltip.winfo_exists():
+        tooltip.destroy()
+
+    current_tooltip = None
+
+def prevent_multiple_instances(mutex_name="my_unique_application_mutex"):
+    """Prevents multiple instances of the application by using a named mutex."""
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.windll.kernel32.GetLastError()
+
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        print("Another instance of this application is already running.")
+        sys.exit()
